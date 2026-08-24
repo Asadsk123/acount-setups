@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Device Controller</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; background: #0f1115; color: #e6e6e6; }
+  h1 { font-size: 18px; }
+  .card { background: #1a1d24; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  input { width: 100%; box-sizing: border-box; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid #333; background: #0f1115; color: #e6e6e6; }
+  button { width: 100%; padding: 14px; font-size: 16px; border-radius: 8px; border: none; margin-top: 10px; cursor: pointer; }
+  #pairBtn { background: #3b82f6; color: white; }
+  #soundBtn { background: #22c55e; color: white; font-weight: bold; }
+  #soundBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
+  .status { font-size: 13px; color: #999; margin-top: 8px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .online { background: #22c55e; } .offline { background: #666; }
+  #audit { font-size: 12px; color: #aaa; max-height: 200px; overflow-y: auto; font-family: monospace; }
+  #audit div { padding: 4px 0; border-bottom: 1px solid #222; }
+</style>
+</head>
+<body>
+  <h1>Device Controller — vertical slice demo</h1>
+
+  <div class="card" id="pairCard">
+    <div>Pairing code (shown on the phone):</div>
+    <input id="code" maxlength="6" placeholder="123456" />
+    <button id="pairBtn">Pair device</button>
+    <div class="status" id="pairStatus"></div>
+  </div>
+
+  <div class="card" id="deviceCard" style="display:none">
+    <div><span class="dot offline" id="statusDot"></span><span id="statusText">connecting…</span></div>
+    <button id="soundBtn" disabled>Push to Sound</button>
+    <div class="status" id="soundStatus"></div>
+  </div>
+
+  <div class="card">
+    <div style="margin-bottom:8px">Audit log</div>
+    <div id="audit"></div>
+  </div>
+
+<script src="app.js"></script>
+</body>
+</html>
