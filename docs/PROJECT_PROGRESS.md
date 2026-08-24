@@ -31,3 +31,22 @@
   already downloaded to `C:\Android`) for the operator to run directly in their own terminal, where it
   should build normally.
 - `relay-server/fake_agent.js`: stand-in agent for testing the controller without a phone.
+
+## 2026-08-24 — controller re-verified with Reticle; Android APK actually compiled
+
+- Re-verified the controller UI using Reticle (`reticle_act_and_wait` / `reticle_assert`), not just
+  manual browser driving: filled a real pairing code, clicked Pair, confirmed the PAIR_COMPLETE audit
+  entry for the fresh device id, clicked Push to Sound, asserted `"device result: PLAYED"` — passed.
+  Filed one gap report with Reticle (net.bodyContains couldn't read the body without
+  `captureNetworkBodies`, had to fall back to a text-presence assert).
+- Got a real Android APK compiled despite the blocked Gradle build: `android-agent/manual-build/`
+  drives aapt2 + javac + d8 + apksigner directly (none of these need Gradle's daemon IPC socket).
+  Along the way: found build-tools 34.0.0's bundled d8 (8.2.2-dev) throws an internal NPE on some
+  class shapes from javac 21 output regardless of anonymous-class nesting depth — installing
+  build-tools 35.0.0 (newer d8) fixed it. Output: signed, `apksigner verify`-clean APK at
+  `android-agent/manual-build/out/apk/app-debug.apk`. This path uses a hand-rolled `MiniWebSocket`
+  (no OkHttp/Kotlin-stdlib, to avoid manual dependency-jar fetching) — it exists only to prove the
+  design compiles and runs; `android-agent/app/` (Kotlin + OkHttp, via Gradle) stays the real
+  implementation.
+- Next: get an emulator running to actually install and tap through the APK (system image
+  downloading); no physical phone available in this session.
