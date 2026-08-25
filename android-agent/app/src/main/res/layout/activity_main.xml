@@ -57,10 +57,16 @@
             android:text="Allow mic + camera" />
 
         <Button
+            android:id="@+id/btnNotifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Allow notification access" />
+
+        <Button
             android:id="@+id/btnAccessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Enable remote control (Accessibility)" />
+            android:text="Enable remote control + app blocking (Accessibility)" />
 
         <Button
             android:id="@+id/btnDeviceAdmin"

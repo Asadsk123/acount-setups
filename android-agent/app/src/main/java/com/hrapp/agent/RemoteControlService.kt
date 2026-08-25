@@ -32,7 +32,23 @@ class RemoteControlService : AccessibilityService() {
         Agent.log("accessibility service connected")
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* command-driven, not event-driven */ }
+    // Policy enforcement: when the foreground app changes, bounce it to Home if
+    // it's blocked or over its daily time budget (AppsModule policy). This is the
+    // only non-root way to "stop" an app — detect + eject, like consumer app
+    // blockers. A real force-stop needs Device Owner (MDM).
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg == packageName || pkg == "com.android.systemui") return
+        val policy = AppsModule.getPolicy(this, pkg)
+        val usedSeconds = UsageTracker.onForeground(pkg)
+        val overLimit = policy.limitSeconds > 0 && usedSeconds >= policy.limitSeconds
+        if (policy.blocked || overLimit) {
+            Agent.log("policy bounce: $pkg (${if (policy.blocked) "blocked" else "over limit ${usedSeconds}s"})")
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+    }
+
     override fun onInterrupt() {}
 
     override fun onDestroy() {

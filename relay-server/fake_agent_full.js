@@ -19,7 +19,8 @@ ws.on('message', (raw) => {
     case 'AUTH_RESPONSE':
       if (m.status === 'OK') {
         console.log('AGENT_READY');
-        send({ message_type: 'CAPABILITY_RESPONSE', payload: { push_to_sound: true, device_info: true, location: true, remote_input: true, lock: true, screen: true, camera: true, mic: true } });
+        send({ message_type: 'CAPABILITY_RESPONSE', payload: { push_to_sound: true, device_info: true, location: true, remote_input: true, lock: true, screen: true, camera: true, mic: true, notifications: true, apps: true } });
+        startNotifications();
       }
       break;
     case 'DEVICE_INFO_REQUEST':
@@ -52,8 +53,44 @@ ws.on('message', (raw) => {
     case 'STOP_CAMERA':  stopStream('camera'); break;
     case 'START_MIC':    startMic(); break;
     case 'STOP_MIC':     stopMic(); break;
+
+    case 'APPS_REQUEST':
+      send({ message_type: 'APPS_RESPONSE', payload: { apps: fakeApps } });
+      break;
+    case 'UNINSTALL_REQUEST':
+      console.log('UNINSTALL requested:', m.payload.pkg);
+      // Real agent fires the system uninstall dialog; here we report "prompted".
+      send({ message_type: 'UNINSTALL_ACK', payload: { pkg: m.payload.pkg, state: 'prompted-on-device' } });
+      break;
+    case 'SET_APP_POLICY': {
+      const a = fakeApps.find((x) => x.pkg === m.payload.pkg);
+      if (a) { a.blocked = m.payload.blocked; a.limit_seconds = m.payload.limit_seconds; }
+      console.log('POLICY:', JSON.stringify(m.payload));
+      send({ message_type: 'APP_POLICY_ACK', payload: m.payload });
+      break;
+    }
   }
 });
+
+const fakeApps = [
+  { pkg: 'com.whatsapp', label: 'WhatsApp', blocked: false, limit_seconds: 0 },
+  { pkg: 'com.instagram.android', label: 'Instagram', blocked: false, limit_seconds: 0 },
+  { pkg: 'com.google.android.youtube', label: 'YouTube', blocked: false, limit_seconds: 0 },
+  { pkg: 'com.android.chrome', label: 'Chrome', blocked: false, limit_seconds: 0 },
+];
+
+const sampleNotifs = [
+  { app: 'WhatsApp', title: 'Ammi', text: 'Khana kha liya?' },
+  { app: 'Gmail', title: 'Invoice #4821', text: 'Your payment is due' },
+  { app: 'Instagram', title: 'new_follower', text: 'started following you' },
+];
+let notifIdx = 0;
+function startNotifications() {
+  setInterval(() => {
+    const n = sampleNotifs[notifIdx++ % sampleNotifs.length];
+    send({ message_type: 'NOTIFICATION_EVENT', payload: { ...n, time: Date.now() } });
+  }, 4000);
+}
 
 // --- streaming stand-ins: real agent sends JPEG (screen/camera) and PCM (mic);
 // here we synthesize equivalent frames so the controller's receive+display

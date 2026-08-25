@@ -50,6 +50,9 @@ class MainActivity : AppCompatActivity(), Agent.StatusListener {
                 android.Manifest.permission.CAMERA
             ), 1002)
         }
+        findViewById<Button>(R.id.btnNotifications).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
     }
 
     override fun onResume() {

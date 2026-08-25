@@ -110,3 +110,32 @@ Added the three media modules the operator asked for.
 
 Honest scope reminder carried forward: **remote unlock is not built and cannot be** — no Android API
 exists for it. Lock only.
+
+## 2026-08-25 — notifications + app management (block / time-limit / uninstall)
+
+Operator ask: mirror phone notifications to the controller, and from the controller block / kill /
+delete / time-limit apps.
+
+CTO scope call (no root, no Device Owner/MDM):
+- **Notifications** ✅ real — `NotificationListenerModule` (NotificationListenerService). User grants
+  "Notification access" by hand; posted notifications forwarded as `{app,title,text,time}`. Not persisted.
+- **Installed apps list** ✅ real — `AppsModule` via PackageManager (launchable apps).
+- **Block / time-limit an app** ✅ real, honest mechanism — policy stored in `AppsModule`
+  (SharedPreferences), enforced by `RemoteControlService`'s accessibility `onAccessibilityEvent`:
+  on foreground-app change it checks the policy and, if the app is blocked or over its daily budget
+  (`UsageTracker`), performs GLOBAL_ACTION_HOME to eject it. This is exactly how consumer app-blockers
+  work without root. A true silent force-stop needs Device Owner (MDM) — noted as the upgrade path.
+- **Uninstall / delete** ⚠️ real but not silent — `AppsModule.requestUninstall` fires the system
+  ACTION_DELETE dialog; the user confirms on the device. Silent uninstall needs Device Owner.
+
+Wiring: Agent router handles APPS_REQUEST / SET_APP_POLICY / UNINSTALL_REQUEST + sends
+NOTIFICATION_EVENT; capability report adds notifications/apps; manifest gains the listener service,
+QUERY_ALL_PACKAGES, and MainActivity a "Allow notification access" button. Relay routes the new
+message types (notifications audited, per MASTER §23 they're allowed). Controller gains a live
+notification feed and an Apps card (per-app block checkbox, minute-limit input, Delete button).
+
+Verification: `test_apps_notifs.js` — notification delivery, apps list, block+limit policy ack, and
+uninstall-prompt — all pass end-to-end through the real relay, plus all prior suites still green
+(vertical / modules / streaming). Live in-browser Reticle verification of these two cards was blocked
+by a throttled-tab pairing race this round; the automated suite exercises the same relay path.
+Android capture/enforcement (notification read, HOME-bounce) is device-only as always.

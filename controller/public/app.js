@@ -29,6 +29,10 @@ function route(msg) {
     case 'CAMERA_FRAME': return onFrame('cameraView', 'cameraStatus', msg.payload);
     case 'MIC_CHUNK': return onMicChunk(msg.payload);
     case 'STREAM_STATUS': return onStreamStatus(msg.payload);
+    case 'NOTIFICATION_EVENT': return onNotification(msg.payload);
+    case 'APPS_RESPONSE': return onApps(msg.payload);
+    case 'UNINSTALL_ACK': return setActionStatus(`uninstall ${msg.payload.pkg}: ${msg.payload.state}`);
+    case 'APP_POLICY_ACK': return onPolicyAck(msg.payload);
   }
 }
 
@@ -54,7 +58,7 @@ function onAuth(msg) {
 
 // --- capabilities ---
 function onCaps(caps) {
-  const labels = { push_to_sound: 'Sound', device_info: 'Device info', location: 'Location', remote_input: 'Remote control', lock: 'Lock', screen: 'Screen', camera: 'Camera', mic: 'Mic' };
+  const labels = { push_to_sound: 'Sound', device_info: 'Device info', location: 'Location', remote_input: 'Remote control', lock: 'Lock', screen: 'Screen', camera: 'Camera', mic: 'Mic', notifications: 'Notifications', apps: 'Apps' };
   $('caps').innerHTML = Object.entries(labels)
     .map(([k, label]) => `<span class="chip ${caps[k] ? 'on' : ''}">${label}${caps[k] ? '' : ' (off)'}</span>`).join('');
 }
@@ -147,6 +151,54 @@ $('cameraFront').onclick = () => { $('cameraStatus').textContent = 'starting fro
 $('cameraStop').onclick = () => send({ message_type: 'STOP_CAMERA' });
 $('micStart').onclick = () => send({ message_type: 'START_MIC' });
 $('micStop').onclick = () => send({ message_type: 'STOP_MIC' });
+
+// --- notifications ---
+const notifs = [];
+function onNotification(p) {
+  notifs.unshift(p);
+  if (notifs.length > 30) notifs.pop();
+  $('notifs').innerHTML = notifs.map((n) =>
+    `<div style="padding:6px 0;border-bottom:1px solid var(--border)">
+       <div><b>${esc(n.app)}</b> <span style="color:var(--muted)">${new Date(n.time || Date.now()).toLocaleTimeString()}</span></div>
+       <div>${esc(n.title || '')}</div>
+       <div style="color:var(--muted)">${esc(n.text || '')}</div>
+     </div>`).join('');
+}
+
+// --- apps + policy ---
+$('appsBtn').onclick = () => { $('appsBtn').textContent = 'loading…'; send({ message_type: 'APPS_REQUEST' }); };
+function onApps(p) {
+  $('appsBtn').textContent = 'Reload installed apps';
+  const apps = p.apps || [];
+  $('apps').innerHTML = apps.map((a) => `
+    <div data-pkg="${esc(a.pkg)}" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <div style="flex:1">
+        <div>${esc(a.label)}</div>
+        <div style="color:var(--muted);font-size:11px">${esc(a.pkg)}</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:4px;color:var(--muted)">
+        <input type="checkbox" class="blockChk" ${a.blocked ? 'checked' : ''}/> block
+      </label>
+      <input class="limitMin" type="number" min="0" placeholder="min" value="${a.limit_seconds ? Math.round(a.limit_seconds/60) : ''}" style="width:56px;padding:6px" />
+      <button class="ghost applyPol" style="padding:6px 10px">Apply</button>
+      <button class="red uninstall" style="padding:6px 10px">Delete</button>
+    </div>`).join('');
+  $('apps').querySelectorAll('.applyPol').forEach((b) => b.onclick = (e) => {
+    const row = e.target.closest('[data-pkg]');
+    const pkg = row.dataset.pkg;
+    const blocked = row.querySelector('.blockChk').checked;
+    const min = parseInt(row.querySelector('.limitMin').value || '0', 10);
+    send({ message_type: 'SET_APP_POLICY', payload: { pkg, blocked, limit_seconds: min > 0 ? min * 60 : 0 } });
+  });
+  $('apps').querySelectorAll('.uninstall').forEach((b) => b.onclick = (e) => {
+    const pkg = e.target.closest('[data-pkg]').dataset.pkg;
+    send({ message_type: 'UNINSTALL_REQUEST', payload: { pkg } });
+  });
+}
+function onPolicyAck(p) {
+  setActionStatus(`policy for ${p.pkg}: ${p.blocked ? 'blocked' : 'allowed'}${p.limit_seconds ? `, limit ${Math.round(p.limit_seconds/60)}m` : ''}`);
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 // --- actions ---
 $('soundBtn').onclick = () => send({ message_type: 'PLAY_SOUND', payload: { sound_id: 'tan_tan' } });

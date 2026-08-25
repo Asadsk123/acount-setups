@@ -37,6 +37,10 @@ Every message — request, response, or event — shares this envelope.
 | `START_CAMERA`/`STOP_CAMERA`, `CAMERA_FRAME` | both dirs | §27 Camera2 JPEG frames `{mime,b64}` |
 | `START_MIC`/`STOP_MIC`, `MIC_CHUNK` | both dirs | §11 mic PCM `{pcm_b64,sample_rate}` |
 | `STREAM_STATUS` | Agent → Controller | `{stream,state}` started/stopped/denied — the only stream line audited |
+| `NOTIFICATION_EVENT` | Agent → Controller | `{app,title,text,time}` mirrored notification (§23) |
+| `APPS_REQUEST` / `APPS_RESPONSE` | Controller ↔ Agent | installed apps `{apps:[{pkg,label,blocked,limit_seconds}]}` (§24) |
+| `SET_APP_POLICY` / `APP_POLICY_ACK` | Controller → Agent | `{pkg,blocked,limit_seconds}` — enforced by accessibility HOME-bounce (§25) |
+| `UNINSTALL_REQUEST` / `UNINSTALL_ACK` | Controller → Agent | fires system uninstall dialog; ack `state:"prompted-on-device"` (not silent) |
 | `HEARTBEAT` | Both | Connection liveness, §16 |
 
 Frame/chunk messages (`SCREEN_FRAME`/`CAMERA_FRAME`/`MIC_CHUNK`) are high-rate and are forwarded but **not** written to the audit log per-frame — only `STREAM_STATUS` start/stop is audited. Media rides base64-over-JSON for v1 (ponytail); the production upgrade is hardware encode + binary WS frames (MASTER.md §11 optimization phase).

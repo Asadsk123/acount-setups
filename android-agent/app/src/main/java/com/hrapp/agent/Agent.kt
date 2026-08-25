@@ -156,6 +156,22 @@ object Agent {
             "STOP_CAMERA" -> { log("STOP_CAMERA"); CameraModule.stop() }
             "START_MIC" -> { log("START_MIC"); MicModule.start(appContext) }
             "STOP_MIC" -> { log("STOP_MIC"); MicModule.stop() }
+            "APPS_REQUEST" -> {
+                log("APPS_REQUEST received")
+                send("APPS_RESPONSE", AppsModule.listApps(appContext), msg.optString("request_id"))
+            }
+            "SET_APP_POLICY" -> {
+                val p = msg.getJSONObject("payload")
+                log("SET_APP_POLICY: ${p.optString("pkg")}")
+                AppsModule.setPolicy(appContext, p.getString("pkg"), p.optBoolean("blocked"), p.optLong("limit_seconds"))
+                send("APP_POLICY_ACK", p, msg.optString("request_id"))
+            }
+            "UNINSTALL_REQUEST" -> {
+                val pkg = msg.getJSONObject("payload").getString("pkg")
+                log("UNINSTALL_REQUEST: $pkg")
+                AppsModule.requestUninstall(appContext, pkg)
+                send("UNINSTALL_ACK", JSONObject().put("pkg", pkg).put("state", "prompted-on-device"), msg.optString("request_id"))
+            }
             else -> log("unhandled message_type: $type")
         }
     }
@@ -170,8 +186,17 @@ object Agent {
             put("screen", true) // consent is per-session (Android 14+); capability is "offerable"
             put("camera", CameraModule.isAvailable(appContext))
             put("mic", MicModule.isAvailable(appContext))
+            put("notifications", NotificationListenerModule.isEnabled(appContext))
+            put("apps", true)
         }
         send("CAPABILITY_RESPONSE", caps)
+    }
+
+    /** Called by NotificationListenerModule when a notification is posted. */
+    fun sendNotification(app: String, title: String, text: String) {
+        send("NOTIFICATION_EVENT", JSONObject().apply {
+            put("app", app); put("title", title); put("text", text); put("time", System.currentTimeMillis())
+        })
     }
 
     fun reportLocation(lat: Double, lon: Double, accuracy: Float) {

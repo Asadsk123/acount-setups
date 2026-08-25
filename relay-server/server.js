@@ -26,6 +26,10 @@ const TO_AGENT = {
   STOP_CAMERA: null,
   START_MIC: null,
   STOP_MIC: null,
+  // Apps + policy (controller → agent)
+  APPS_REQUEST: null,
+  UNINSTALL_REQUEST: null,
+  SET_APP_POLICY: null,
 };
 // Agent→controller responses/events, forwarded verbatim + audited.
 const TO_CONTROLLER = new Set([
@@ -39,6 +43,11 @@ const TO_CONTROLLER = new Set([
   'CAMERA_FRAME',
   'MIC_CHUNK',
   'STREAM_STATUS',
+  // Apps + notifications + policy (agent → controller)
+  'NOTIFICATION_EVENT',
+  'APPS_RESPONSE',
+  'UNINSTALL_ACK',
+  'APP_POLICY_ACK',
 ]);
 // High-rate stream frames: forward but DON'T write one audit line per frame
 // (would drown the log). Audited only on start/stop via STREAM_STATUS.
