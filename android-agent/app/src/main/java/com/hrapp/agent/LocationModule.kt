@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Looper
-import androidx.core.app.ActivityCompat
 
 /**
  * MASTER.md §21. ponytail: plain android.location.LocationManager, not
@@ -15,14 +14,14 @@ import androidx.core.app.ActivityCompat
  */
 object LocationModule {
     fun isAvailable(context: Context): Boolean {
-        val granted = ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        val granted = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
         return granted && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
     }
 
     fun requestOnce(context: Context) {
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) !=
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             Agent.log("LOCATION_REQUEST denied: permission not granted")

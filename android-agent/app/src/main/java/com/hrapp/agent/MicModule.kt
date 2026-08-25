@@ -7,7 +7,6 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.util.Base64
-import androidx.core.app.ActivityCompat
 
 /**
  * Live microphone → PCM chunks to the controller (MASTER.md §11). Explicit,
@@ -25,7 +24,7 @@ object MicModule {
     private var thread: Thread? = null
 
     fun isAvailable(context: Context): Boolean =
-        ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     fun start(context: Context) {
         if (recording) return

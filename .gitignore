@@ -5,3 +5,8 @@ build/
 app/build/
 local.properties
 android-agent/manual-build/out/
+
+# build artifacts
+android-agent/build-manual/
+android-agent/manual-build/out/
+*.apk

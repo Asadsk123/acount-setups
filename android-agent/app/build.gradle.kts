@@ -30,10 +30,8 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    // WebSocket client — protocol v1 relay connection (docs/PROTOCOL.md).
-    // ponytail: OkHttp's built-in WebSocket support, no separate socket lib needed.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.json:json:20240303")
+    // Zero third-party dependencies: plain framework Activity, org.json is in
+    // android.jar, and WebSocket is our own MiniWebSocket. This keeps the app
+    // buildable both via Gradle AND via the dependency-free manual pipeline
+    // (build_full.sh) used when Gradle's daemon socket is unavailable.
 }

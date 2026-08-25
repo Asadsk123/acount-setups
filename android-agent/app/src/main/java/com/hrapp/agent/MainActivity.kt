@@ -1,5 +1,6 @@
 package com.hrapp.agent
 
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
@@ -8,7 +9,6 @@ import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 
 /**
  * Onboarding + status UI over the Agent singleton.
@@ -24,7 +24,7 @@ import androidx.appcompat.app.AppCompatActivity
  * The app deliberately stays VISIBLE — no hidden/stealth mode. Concealing the app
  * from the device user is exactly what MASTER.md §50 forbids (no hidden monitoring).
  */
-class MainActivity : AppCompatActivity(), Agent.StatusListener {
+class MainActivity : Activity(), Agent.StatusListener {
 
     private lateinit var statusText: TextView
     private lateinit var pairingCodeText: TextView

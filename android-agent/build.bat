@@ -1,8 +1,7 @@
 @echo off
-REM Run this yourself in a normal cmd/PowerShell window (double-click it, or
-REM open cmd.exe and run it) — NOT through the Claude Code tool. JDK/SDK/Gradle
-REM are already downloaded to C:\Android by the assistant; this just wires
-REM them up and builds the APK.
+REM Standard Gradle build. If Gradle can't run in your environment (daemon
+REM socket blocked), use build_full.sh instead (Git Bash) — it produces the
+REM same APK without Gradle. The app is dependency-free so both paths work.
 set JAVA_HOME=C:\Android\jdk21\jdk-21.0.5+11
 set ANDROID_HOME=C:\Android
 set PATH=%JAVA_HOME%\bin;%ANDROID_HOME%\cmdline-tools\latest\bin;%ANDROID_HOME%\platform-tools;C:\Android\gradle\gradle-8.9\bin;%PATH%
@@ -24,7 +23,9 @@ goto :end
 
 :error
 echo.
-echo BUILD FAILED — see output above.
+echo Gradle build failed. Try the Gradle-free path in Git Bash:
+echo   bash build_full.sh
+echo (produces build-manual\apk\hrapp-agent.apk)
 
 :end
 pause

@@ -3,10 +3,8 @@ package com.hrapp.agent
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
-import okhttp3.*
 import org.json.JSONObject
 import java.util.UUID
-import java.util.concurrent.TimeUnit
 
 /**
  * Singleton connection + message router, shared by MainActivity and the
@@ -33,8 +31,7 @@ object Agent {
         fun onLog(line: String)
     }
 
-    private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
-    private var ws: WebSocket? = null
+    private var ws: MiniWebSocket? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     var deviceId: String? = null
         private set
@@ -57,34 +54,30 @@ object Agent {
     /** Called from the UI when the user enters/changes the PC's IP. Reconnects. */
     fun setRelayHost(host: String) {
         appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).apply()
-        ws?.close(1000, "relay host changed")
+        ws?.close()
         deviceId = null
         connect()
     }
 
-    private fun relayUrl(): String = "ws://${getRelayHost()}:$PORT"
-
     private fun connect() {
         status("connecting to ${getRelayHost()}…")
-        val request = Request.Builder().url(relayUrl()).build()
-        ws = client.newWebSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
+        ws = MiniWebSocket(getRelayHost(), PORT, "/", object : MiniWebSocket.Listener {
+            override fun onOpen() {
                 log("relay connected")
                 sendPairInit()
             }
-            override fun onMessage(webSocket: WebSocket, text: String) {
-                handleMessage(text)
+            override fun onMessage(text: String) {
+                mainHandler.post { handleMessage(text) }
             }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+            override fun onFailure(t: Throwable) {
                 status("relay unreachable: ${t.message}")
                 log("connection failed — retrying in 5s")
-                webSocket.close(1000, null)
                 mainHandler.postDelayed({ connect() }, 5000)
             }
-            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+            override fun onClosed() {
                 status("disconnected")
             }
-        })
+        }).also { it.connectAsync() }
     }
 
     fun send(json: JSONObject) {

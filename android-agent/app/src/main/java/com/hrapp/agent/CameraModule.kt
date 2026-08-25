@@ -12,7 +12,6 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
-import androidx.core.app.ActivityCompat
 
 /**
  * Live camera → JPEG frames to the controller (MASTER.md §27 planned interface).
@@ -34,7 +33,7 @@ object CameraModule {
     private var lastFrameAt = 0L
 
     fun isAvailable(context: Context): Boolean {
-        val granted = ActivityCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val granted = context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
         return granted && cm.cameraIdList.isNotEmpty()
     }
