@@ -10,6 +10,25 @@ import { randomUUID, createHmac, randomBytes } from 'crypto';
 const PORT = process.env.PORT || 8787;
 const wss = new WebSocketServer({ port: PORT });
 
+// Controller→agent commands. Value = ACK message_type sent back to the
+// controller synchronously (null = no synchronous ack, the agent replies async).
+const TO_AGENT = {
+  PLAY_SOUND: 'PLAY_SOUND_ACK',
+  DEVICE_INFO_REQUEST: null,
+  LOCATION_REQUEST: null,
+  INPUT_COMMAND: null,
+  LOCK_REQUEST: null,
+};
+// Agent→controller responses/events, forwarded verbatim + audited.
+const TO_CONTROLLER = new Set([
+  'PLAY_SOUND_RESULT',
+  'DEVICE_INFO_RESPONSE',
+  'LOCATION_EVENT',
+  'INPUT_COMMAND_ACK',
+  'LOCK_RESPONSE',
+  'CAPABILITY_RESPONSE',
+]);
+
 // device_id -> { ws, role: 'agent' | 'controller', lastSeq }
 const connections = new Map();
 // pairing_code -> { deviceId, secret, expiresAt }
@@ -105,32 +124,37 @@ wss.on('connection', (ws) => {
         break;
       }
 
-      case 'PLAY_SOUND': {
-        const target = connections.get(`${msg.device_id}:agent`);
-        if (!target) {
-          logAudit({ type: 'PLAY_SOUND_FAILED', deviceId: msg.device_id, detail: 'agent offline' });
-          return send(ws, { message_type: 'PLAY_SOUND_ACK', request_id: msg.request_id, status: 'ERROR', error_code: 'DEVICE_OFFLINE' });
-        }
-        send(target.ws, { message_type: 'PLAY_SOUND', request_id: msg.request_id, device_id: msg.device_id, payload: msg.payload });
-        logAudit({ type: 'PLAY_SOUND_SENT', deviceId: msg.device_id, detail: msg.payload?.sound_id });
-        send(ws, { message_type: 'PLAY_SOUND_ACK', request_id: msg.request_id, status: 'OK' });
-        break;
-      }
-
-      // Agent reports playback completed — forwarded to controller + audited.
-      case 'PLAY_SOUND_RESULT': {
-        logAudit({ type: 'PLAY_SOUND_RESULT', deviceId: msg.device_id, detail: msg.payload?.result });
-        const controller = connections.get(`${msg.device_id}:controller`);
-        if (controller) send(controller.ws, { message_type: 'PLAY_SOUND_RESULT', device_id: msg.device_id, payload: msg.payload });
-        break;
-      }
-
       case 'HEARTBEAT':
         send(ws, { message_type: 'HEARTBEAT', status: 'OK' });
         break;
 
-      default:
-        send(ws, { message_type: 'ERROR', status: 'ERROR', error_code: 'NOT_SUPPORTED' });
+      default: {
+        // Generic router. Everything past pairing/auth is either a command
+        // headed to the agent or a response/event headed to the controller.
+        // Adding a new module = add its message_type to one of these tables;
+        // no new case needed (MASTER.md §40 — features are additive).
+        if (msg.message_type in TO_AGENT) {
+          const target = connections.get(`${msg.device_id}:agent`);
+          const detail = msg.payload?.sound_id || msg.payload?.action || '';
+          if (!target) {
+            logAudit({ type: msg.message_type + '_FAILED', deviceId: msg.device_id, detail: 'agent offline' });
+            const ackType = TO_AGENT[msg.message_type];
+            if (ackType) send(ws, { message_type: ackType, request_id: msg.request_id, status: 'ERROR', error_code: 'DEVICE_OFFLINE' });
+            return;
+          }
+          send(target.ws, { message_type: msg.message_type, request_id: msg.request_id, device_id: msg.device_id, payload: msg.payload });
+          logAudit({ type: msg.message_type + '_SENT', deviceId: msg.device_id, detail });
+          const ackType = TO_AGENT[msg.message_type];
+          if (ackType) send(ws, { message_type: ackType, request_id: msg.request_id, status: 'OK' });
+        } else if (TO_CONTROLLER.has(msg.message_type)) {
+          const detail = msg.payload?.result ?? JSON.stringify(msg.payload ?? {}).slice(0, 80);
+          logAudit({ type: msg.message_type, deviceId: msg.device_id, detail });
+          const controller = connections.get(`${msg.device_id}:controller`);
+          if (controller) send(controller.ws, { message_type: msg.message_type, device_id: msg.device_id, payload: msg.payload });
+        } else {
+          send(ws, { message_type: 'ERROR', status: 'ERROR', error_code: 'NOT_SUPPORTED' });
+        }
+      }
     }
   });
 

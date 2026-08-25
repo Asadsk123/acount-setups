@@ -1,0 +1,174 @@
+package com.hrapp.agent
+
+import android.app.Application
+import android.os.Handler
+import android.os.Looper
+import okhttp3.*
+import org.json.JSONObject
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+/**
+ * Singleton connection + message router, shared by MainActivity and the
+ * modules that don't have their own Activity (RemoteControlService,
+ * LockAdminReceiver). Lives for the process lifetime via HrappApplication,
+ * so remote control keeps working even when MainActivity isn't foregrounded.
+ *
+ * ponytail: a `when` dispatch instead of a registry/plugin system — five
+ * modules is small enough that a registry would be the premature abstraction,
+ * not the simplification. Revisit if module count grows past ~10.
+ */
+object Agent {
+    // Dev machine's LAN IP — phone and PC must be on the same WiFi network.
+    private const val RELAY_URL = "ws://10.28.206.21:8787"
+
+    interface StatusListener {
+        fun onStatus(text: String)
+        fun onPairingCode(code: String)
+        fun onLog(line: String)
+    }
+
+    private val client = OkHttpClient.Builder().pingInterval(20, TimeUnit.SECONDS).build()
+    private var ws: WebSocket? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    var deviceId: String? = null
+        private set
+    private var statusListener: StatusListener? = null
+    private lateinit var appContext: Application
+
+    fun init(app: Application) {
+        if (::appContext.isInitialized) return
+        appContext = app
+        connect()
+    }
+
+    fun setStatusListener(listener: StatusListener?) {
+        statusListener = listener
+    }
+
+    private fun connect() {
+        status("connecting to relay…")
+        val request = Request.Builder().url(RELAY_URL).build()
+        ws = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                log("relay connected")
+                sendPairInit()
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                handleMessage(text)
+            }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                status("relay unreachable: ${t.message}")
+                log("connection failed — retrying in 5s")
+                webSocket.close(1000, null)
+                mainHandler.postDelayed({ connect() }, 5000)
+            }
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                status("disconnected")
+            }
+        })
+    }
+
+    fun send(json: JSONObject) {
+        json.put("protocol_version", 1)
+        json.put("timestamp", System.currentTimeMillis())
+        ws?.send(json.toString())
+    }
+
+    fun send(type: String, payload: JSONObject? = null, requestId: String = UUID.randomUUID().toString()) {
+        send(JSONObject().apply {
+            put("message_type", type)
+            put("request_id", requestId)
+            deviceId?.let { put("device_id", it) }
+            if (payload != null) put("payload", payload)
+        })
+    }
+
+    private fun sendPairInit() {
+        send(JSONObject().apply {
+            put("message_type", "PAIR_INIT")
+            put("request_id", UUID.randomUUID().toString())
+        })
+    }
+
+    private fun sendAuth() {
+        send(JSONObject().apply {
+            put("message_type", "AUTH_REQUEST")
+            put("device_id", deviceId)
+            put("role", "agent")
+        })
+    }
+
+    private fun handleMessage(text: String) {
+        val msg = JSONObject(text)
+        when (val type = msg.optString("message_type")) {
+            "PAIR_INIT_RESPONSE" -> {
+                val payload = msg.getJSONObject("payload")
+                deviceId = payload.getString("device_id")
+                val code = payload.getString("pairing_code")
+                mainHandler.post { statusListener?.onPairingCode(code) }
+                log("pairing code issued: $code")
+                sendAuth()
+            }
+            "AUTH_RESPONSE" -> {
+                if (msg.optString("status") == "OK") {
+                    status("paired — waiting for commands")
+                    sendCapabilities()
+                } else {
+                    status("auth failed")
+                }
+            }
+            "PLAY_SOUND" -> {
+                val soundId = msg.getJSONObject("payload").optString("sound_id", "tan_tan")
+                log("PLAY_SOUND received: $soundId")
+                SoundModule.play(appContext, soundId)
+                send("PLAY_SOUND_RESULT", JSONObject().put("result", "PLAYED"))
+            }
+            "DEVICE_INFO_REQUEST" -> {
+                log("DEVICE_INFO_REQUEST received")
+                send("DEVICE_INFO_RESPONSE", DeviceInfoModule.snapshot(appContext), msg.optString("request_id"))
+            }
+            "LOCATION_REQUEST" -> {
+                log("LOCATION_REQUEST received")
+                LocationModule.requestOnce(appContext)
+            }
+            "INPUT_COMMAND" -> {
+                val payload = msg.getJSONObject("payload")
+                log("INPUT_COMMAND: ${payload.optString("action")}")
+                val ok = RemoteControlService.dispatch(payload)
+                send("INPUT_COMMAND_ACK", JSONObject().put("ok", ok), msg.optString("request_id"))
+            }
+            "LOCK_REQUEST" -> {
+                log("LOCK_REQUEST received")
+                val ok = LockAdminReceiver.lockNow(appContext)
+                send("LOCK_RESPONSE", JSONObject().put("ok", ok), msg.optString("request_id"))
+            }
+            else -> log("unhandled message_type: $type")
+        }
+    }
+
+    private fun sendCapabilities() {
+        val caps = JSONObject().apply {
+            put("push_to_sound", true)
+            put("device_info", true)
+            put("location", LocationModule.isAvailable(appContext))
+            put("remote_input", RemoteControlService.isEnabled(appContext))
+            put("lock", LockAdminReceiver.isActive(appContext))
+        }
+        send("CAPABILITY_RESPONSE", caps)
+    }
+
+    fun reportLocation(lat: Double, lon: Double, accuracy: Float) {
+        send("LOCATION_EVENT", JSONObject().apply {
+            put("lat", lat); put("lon", lon); put("accuracy_m", accuracy)
+        })
+    }
+
+    private fun status(text: String) {
+        mainHandler.post { statusListener?.onStatus(text) }
+    }
+
+    fun log(line: String) {
+        mainHandler.post { statusListener?.onLog(line) }
+    }
+}

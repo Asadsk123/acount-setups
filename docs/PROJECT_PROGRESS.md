@@ -50,3 +50,36 @@
   implementation.
 - Next: get an emulator running to actually install and tap through the APK (system image
   downloading); no physical phone available in this session.
+
+## 2026-08-25 — full module suite: control plane built + verified
+
+Scope expanded (operator request): mic, camera, location, screen, lock, remote touch+keyboard.
+CTO scope call recorded honestly:
+- **Doable, honest Android paths:** location, device info, remote touch/keyboard (AccessibilityService),
+  lock (DevicePolicyManager), sound. Screen (MediaProjection) + mic/camera (foreground service +
+  runtime permission) are the next, heavier phase.
+- **Android HARD-blocks (NOT built, cannot be, by design):** remote *unlock* — no API lets a
+  third-party app dismiss the keyguard / enter the user's credential. Offering it would require a
+  credential bypass, forbidden by MASTER.md §17/§50. Lock is shipped; unlock is not.
+
+Built this session:
+- Android agent (`app/`) is now multi-module: `Agent.kt` (singleton relay conn + message router),
+  `HrappApplication.kt`, `RemoteControlService.kt` (AccessibilityService: tap/swipe/global-nav/text,
+  normalized 0..1 coords scaled to real screen), `LockAdminReceiver.kt` (DeviceAdminReceiver +
+  lockNow), `DeviceInfoModule`, `LocationModule`, `SoundModule`. Manifest wired with the
+  accessibility service, device-admin receiver, res/xml configs, permissions. MainActivity is now a
+  thin UI over Agent that walks the user through the hand-granted permissions. **Not compiled this
+  session** (Gradle still blocked); builds via `build.bat`.
+- Relay (`server.js`) generalized to a two-table router (TO_AGENT commands / TO_CONTROLLER
+  responses) so new modules are additive — no per-message case. Original vertical-slice test still
+  passes (regression clean).
+- Controller (`public/`) is now a full dashboard: capability chips, device-info card, location card
+  with map link, remote-control touchpad (Pointer Events → tap/swipe) + nav buttons + text input,
+  Push-to-Sound + Lock actions, live audit log.
+- **Verification:** `test_modules.js` (automated) passes for capabilities/device-info/location/
+  input/lock/audit. Then re-verified the whole dashboard **live in-browser with Reticle** against a
+  full-protocol fake agent — every module round trip proved (verified:"yes"): pairing, device info
+  (Pixel 5/82%/wifi/41GB), location (24.86/67.00 ±13m), lock ("device locked"), remote input
+  (Back → global ok), each with a matching audit entry.
+- Still user-only (no hardware here): compiling the full-module APK (build.bat) and confirming the
+  gestures/lock actually fire on a real phone.

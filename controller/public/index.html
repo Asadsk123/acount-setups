@@ -2,46 +2,105 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Device Controller</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRAPP Controller</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; background: #0f1115; color: #e6e6e6; }
-  h1 { font-size: 18px; }
-  .card { background: #1a1d24; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
-  input { width: 100%; box-sizing: border-box; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid #333; background: #0f1115; color: #e6e6e6; }
-  button { width: 100%; padding: 14px; font-size: 16px; border-radius: 8px; border: none; margin-top: 10px; cursor: pointer; }
-  #pairBtn { background: #3b82f6; color: white; }
-  #soundBtn { background: #22c55e; color: white; font-weight: bold; }
-  #soundBtn:disabled { background: #333; color: #777; cursor: not-allowed; }
-  .status { font-size: 13px; color: #999; margin-top: 8px; }
+  :root {
+    --bg: #0f1115; --card: #1a1d24; --card2: #22262f; --text: #e6e6e6; --muted: #8b93a1;
+    --border: #2c313b; --accent: #3b82f6; --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; max-width: 620px; margin: 0 auto; padding: 24px 16px;
+    background: var(--bg); color: var(--text); }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 12px; }
+  input { width: 100%; padding: 10px; font-size: 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); }
+  button { padding: 12px; font-size: 15px; border-radius: 8px; border: none; cursor: pointer; color: #fff; background: var(--accent); }
+  button:disabled { background: #333; color: #777; cursor: not-allowed; }
+  button.green { background: var(--green); } button.red { background: var(--red); } button.ghost { background: var(--card2); color: var(--text); border: 1px solid var(--border); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > * { flex: 1; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .online { background: #22c55e; } .offline { background: #666; }
-  #audit { font-size: 12px; color: #aaa; max-height: 200px; overflow-y: auto; font-family: monospace; }
-  #audit div { padding: 4px 0; border-bottom: 1px solid #222; }
+  .online { background: var(--green); } .offline { background: #666; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 14px; }
+  .kv .k { color: var(--muted); }
+  .caps { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+  .chip.on { color: var(--green); border-color: var(--green); }
+  #touchpad { height: 220px; background: var(--card2); border: 1px dashed var(--border); border-radius: 10px;
+    touch-action: none; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; user-select: none; }
+  #audit { font-size: 12px; color: var(--muted); max-height: 220px; overflow-y: auto; font-family: monospace; }
+  #audit div { padding: 4px 0; border-bottom: 1px solid var(--border); }
+  .hidden { display: none; }
 </style>
 </head>
 <body>
-  <h1>Device Controller — vertical slice demo</h1>
+  <h1>HRAPP Controller</h1>
+  <div class="sub">Authorized remote management — pair a device to begin.</div>
 
   <div class="card" id="pairCard">
-    <div>Pairing code (shown on the phone):</div>
-    <input id="code" maxlength="6" placeholder="123456" />
-    <button id="pairBtn">Pair device</button>
+    <h2>Pair device</h2>
+    <div class="status">Enter the 6-digit code shown on the phone app.</div>
+    <input id="code" maxlength="6" inputmode="numeric" placeholder="123456" style="margin:10px 0" />
+    <button id="pairBtn" style="width:100%">Pair</button>
     <div class="status" id="pairStatus"></div>
   </div>
 
-  <div class="card" id="deviceCard" style="display:none">
-    <div><span class="dot offline" id="statusDot"></span><span id="statusText">connecting…</span></div>
-    <button id="soundBtn" disabled>Push to Sound</button>
-    <div class="status" id="soundStatus"></div>
-  </div>
+  <div id="dash" class="hidden">
+    <div class="card">
+      <h2>Device</h2>
+      <div><span class="dot online" id="statusDot"></span><span id="statusText"></span></div>
+      <div class="caps" id="caps" style="margin-top:12px"></div>
+    </div>
 
-  <div class="card">
-    <div style="margin-bottom:8px">Audit log</div>
-    <div id="audit"></div>
+    <div class="card">
+      <h2>Device info</h2>
+      <div class="kv" id="deviceInfo"><span class="k">—</span><span>press refresh</span></div>
+      <button class="ghost" id="infoBtn" style="width:100%; margin-top:12px">Refresh device info</button>
+    </div>
+
+    <div class="card">
+      <h2>Location</h2>
+      <div class="kv" id="locationInfo"><span class="k">—</span><span>not requested</span></div>
+      <button class="ghost" id="locBtn" style="width:100%; margin-top:12px">Get current location</button>
+    </div>
+
+    <div class="card">
+      <h2>Remote control</h2>
+      <div id="touchpad">tap / drag here → sends to phone</div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" data-global="back">Back</button>
+        <button class="ghost" data-global="home">Home</button>
+        <button class="ghost" data-global="recents">Recents</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="textInput" placeholder="type text to send…" style="flex:3" />
+        <button id="textBtn" style="flex:1">Send</button>
+      </div>
+      <div class="status" id="controlStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>Actions</h2>
+      <div class="row">
+        <button class="green" id="soundBtn">Push to Sound</button>
+        <button class="red" id="lockBtn">Lock device</button>
+      </div>
+      <div class="status" id="actionStatus"></div>
+    </div>
+
+    <div class="card">
+      <h2>Audit log</h2>
+      <div id="audit"></div>
+    </div>
   </div>
 
 <script type="module">
-  import { reticle } from 'https://cdn.jsdelivr.net/npm/@reticlehq/browser@2.11.0/+esm';
+  import { reticle } from 'https://cdn.jsdelivr.net/npm/@reticlehq/browser@2.12.0/+esm';
   reticle.connect({ token: '0940a0bab778296396e225abdd6231809db4aad392949116' });
 </script>
 <script src="app.js"></script>

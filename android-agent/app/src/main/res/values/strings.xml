@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">HRAPP Agent</string>
+    <string name="accessibility_description">Lets the paired controller send taps, swipes, navigation and text to this device. You can turn this off any time.</string>
 </resources>

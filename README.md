@@ -33,7 +33,19 @@ open the app, it shows a 6-digit pairing code — enter that in the controller U
 **No phone handy?** `relay-server/fake_agent.js` stands in for the real agent — run it, it prints
 a pairing code, use that in the controller UI instead.
 
-## What's not built yet
+**Full dashboard test (no phone needed):** run `relay-server/fake_agent_full.js` — it speaks the whole
+protocol (device info, location, input, lock, sound). Pair with its printed code, then every card in
+the controller works end to end. Automated version: `node relay-server/test_modules.js`.
 
-Everything else in MASTER.md — screen, remote input, location, usage, notifications, apps,
-restrictions, camera/mic/calling. See docs/MASTER.md §38 for the phase order.
+## Built and verified
+
+- Pairing + auth + audit (relay)
+- Push-to-Sound (ADR-0004)
+- Device info, Location, Remote touch/keyboard, Lock — controller ↔ relay ↔ agent round trips,
+  verified live in-browser with Reticle. Android agent code complete (`android-agent/app/`).
+
+## Not built yet / next phase
+
+- Screen mirroring (MediaProjection), mic/camera streaming (foreground service) — MASTER.md §38 phase order.
+- **Remote unlock is intentionally NOT included** — Android provides no API for a third-party app to
+  dismiss the lock screen; only *lock* is possible (see `docs/PROJECT_PROGRESS.md`).
