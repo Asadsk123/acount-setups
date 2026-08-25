@@ -65,12 +65,20 @@ cd "$OUT/apk"
 cp base.apk app_unsigned.apk
 "$JAVA_HOME/bin/jar.exe" uf app_unsigned.apk classes.dex
 cd "$HERE"
-KS="$OUT/debug.keystore"
+# Stable signing key so every rebuild installs as an UPDATE over the last one
+# (no uninstall). Keep this keystore — changing it forces users to uninstall.
+KS="$HERE/hrapp-release.keystore"
 if [ ! -f "$KS" ]; then
-  "$JAVA_HOME/bin/keytool.exe" -genkeypair -v -keystore "$KS" -storepass android -keypass android \
-    -alias hrapp -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=HRAPP,O=HRAPP,C=US"
+  # Seed from the original manual-build key if present, so existing installs update cleanly.
+  if [ -f "$HERE/manual-build/out/debug.keystore" ]; then
+    cp "$HERE/manual-build/out/debug.keystore" "$KS"
+  else
+    "$JAVA_HOME/bin/keytool.exe" -genkeypair -v -keystore "$KS" -storepass android -keypass android \
+      -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=HRAPP,O=HRAPP,C=US"
+  fi
 fi
 "$BT/apksigner.bat" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+  --ks-key-alias androiddebugkey \
   --out "$OUT/apk/hrapp-agent.apk" "$OUT/apk/app_unsigned.apk"
 "$BT/apksigner.bat" verify "$OUT/apk/hrapp-agent.apk" && echo "SIGNATURE OK"
 

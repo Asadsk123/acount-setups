@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.hrapp.agent">
+    package="com.hrapp.agent"
+    android:versionCode="2"
+    android:versionName="1.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -21,7 +23,7 @@
     <application
         android:name=".HrappApplication"
         android:allowBackup="true"
-        android:label="HRAPP Agent"
+        android:label="HRAPP Remote"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.Light">
 

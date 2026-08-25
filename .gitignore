@@ -10,3 +10,6 @@ android-agent/manual-build/out/
 android-agent/build-manual/
 android-agent/manual-build/out/
 *.apk
+
+# keep signing key out of git
+android-agent/hrapp-release.keystore
