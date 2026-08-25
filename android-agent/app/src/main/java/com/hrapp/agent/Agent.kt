@@ -19,8 +19,13 @@ import java.util.concurrent.TimeUnit
  * not the simplification. Revisit if module count grows past ~10.
  */
 object Agent {
-    // Dev machine's LAN IP — phone and PC must be on the same WiFi network.
-    private const val RELAY_URL = "ws://10.28.206.21:8787"
+    // Relay address is user-configurable (phone + PC must reach each other).
+    // Stored in prefs so it survives restarts; defaults to a LAN placeholder
+    // the user edits on first launch. This is why pairing "does nothing" if the
+    // IP is wrong — the agent can't reach the relay to get a code.
+    private const val PREF = "agent_config"
+    private const val DEFAULT_HOST = "192.168.1.100"
+    private const val PORT = 8787
 
     interface StatusListener {
         fun onStatus(text: String)
@@ -46,9 +51,22 @@ object Agent {
         statusListener = listener
     }
 
+    fun getRelayHost(): String =
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).getString("relay_host", DEFAULT_HOST) ?: DEFAULT_HOST
+
+    /** Called from the UI when the user enters/changes the PC's IP. Reconnects. */
+    fun setRelayHost(host: String) {
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).apply()
+        ws?.close(1000, "relay host changed")
+        deviceId = null
+        connect()
+    }
+
+    private fun relayUrl(): String = "ws://${getRelayHost()}:$PORT"
+
     private fun connect() {
-        status("connecting to relay…")
-        val request = Request.Builder().url(RELAY_URL).build()
+        status("connecting to ${getRelayHost()}…")
+        val request = Request.Builder().url(relayUrl()).build()
         ws = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 log("relay connected")

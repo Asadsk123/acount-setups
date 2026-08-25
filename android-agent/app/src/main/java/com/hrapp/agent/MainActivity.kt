@@ -6,21 +6,30 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
 /**
- * Thin UI over the Agent singleton (which owns the relay connection and module
- * router — Agent.kt). This Activity only renders status/pairing code/log and
- * offers the buttons that walk the user through the one-time, hand-granted
- * permissions each sensitive module needs (Accessibility, Device Admin,
- * Location). It never grants anything itself — MASTER.md §18.
+ * Onboarding + status UI over the Agent singleton.
+ *
+ * Flow the operator asked for (permissions -> code -> pair):
+ *  1. On first launch, auto-request the runtime permissions (mic/camera/location).
+ *  2. Enter the controller PC's IP so the agent can reach the relay — without a
+ *     reachable relay there is no pairing code, which is why pairing looked dead.
+ *  3. The pairing code shows big; enter it in the controller.
+ *  4. Buttons walk through the special accesses (notification / accessibility /
+ *     device-admin) each granted by hand in system settings.
+ *
+ * The app deliberately stays VISIBLE — no hidden/stealth mode. Concealing the app
+ * from the device user is exactly what MASTER.md §50 forbids (no hidden monitoring).
  */
 class MainActivity : AppCompatActivity(), Agent.StatusListener {
 
     private lateinit var statusText: TextView
     private lateinit var pairingCodeText: TextView
     private lateinit var logText: TextView
+    private lateinit var relayHost: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,7 +37,29 @@ class MainActivity : AppCompatActivity(), Agent.StatusListener {
         statusText = findViewById(R.id.statusText)
         pairingCodeText = findViewById(R.id.pairingCodeText)
         logText = findViewById(R.id.logText)
+        relayHost = findViewById(R.id.relayHost)
+        relayHost.setText(Agent.getRelayHost())
 
+        // Step 1: ask for the runtime permissions right away.
+        requestPermissions(arrayOf(
+            android.Manifest.permission.RECORD_AUDIO,
+            android.Manifest.permission.CAMERA,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ), 1000)
+
+        findViewById<Button>(R.id.btnConnect).setOnClickListener {
+            Agent.setRelayHost(relayHost.text.toString())
+        }
+        findViewById<Button>(R.id.btnMedia).setOnClickListener {
+            requestPermissions(arrayOf(
+                android.Manifest.permission.RECORD_AUDIO,
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.ACCESS_FINE_LOCATION
+            ), 1002)
+        }
+        findViewById<Button>(R.id.btnNotifications).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
         findViewById<Button>(R.id.btnAccessibility).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
@@ -40,18 +71,6 @@ class MainActivity : AppCompatActivity(), Agent.StatusListener {
                     "Allows the paired controller to lock this device.")
             }
             startActivity(intent)
-        }
-        findViewById<Button>(R.id.btnLocation).setOnClickListener {
-            requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), 1001)
-        }
-        findViewById<Button>(R.id.btnMedia).setOnClickListener {
-            requestPermissions(arrayOf(
-                android.Manifest.permission.RECORD_AUDIO,
-                android.Manifest.permission.CAMERA
-            ), 1002)
-        }
-        findViewById<Button>(R.id.btnNotifications).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
     }
 

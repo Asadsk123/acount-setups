@@ -13,48 +13,69 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="HRAPP Agent"
-            android:textSize="20sp"
+            android:textSize="22sp"
             android:textStyle="bold" />
+
+        <!-- Step 1: point the phone at the controller PC -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="1. Controller PC IP (same Wi-Fi):" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <EditText
+                android:id="@+id/relayHost"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:inputType="text"
+                android:hint="192.168.1.100" />
+            <Button
+                android:id="@+id/btnConnect"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/statusText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="8dp"
             android:text="connecting…" />
 
+        <!-- Step 2: the pairing code -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="Pairing code:" />
+            android:text="2. Enter this code in the controller:" />
 
         <TextView
             android:id="@+id/pairingCodeText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="44sp"
+            android:textSize="46sp"
             android:textStyle="bold"
             android:letterSpacing="0.15"
             android:text="------" />
 
+        <!-- Step 3: grant the accesses each feature needs -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Grant the permissions each feature needs:" />
-
-        <Button
-            android:id="@+id/btnLocation"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Allow location" />
+            android:layout_marginTop="20dp"
+            android:text="3. Grant access for each feature:" />
 
         <Button
             android:id="@+id/btnMedia"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Allow mic + camera" />
+            android:text="Allow mic + camera + location" />
 
         <Button
             android:id="@+id/btnNotifications"
