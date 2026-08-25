@@ -20,9 +20,9 @@ import java.util.concurrent.TimeUnit
  */
 class MainActivity : AppCompatActivity() {
 
-    // 10.0.2.2 is the emulator's alias for the host machine's localhost.
-    // For a real device on the same LAN, replace with the dev machine's LAN IP.
-    private val relayUrl = "ws://10.0.2.2:8787"
+    // Dev machine's LAN IP — phone and PC must be on the same WiFi network.
+    // If the PC's IP changes, update this (ipconfig -> IPv4 Address).
+    private val relayUrl = "ws://10.28.206.21:8787"
 
     private lateinit var statusText: TextView
     private lateinit var pairingCodeText: TextView

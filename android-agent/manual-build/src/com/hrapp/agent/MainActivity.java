@@ -16,7 +16,8 @@ import java.util.UUID;
 // (Gradle's own toolchain handles this correctly) — manual-build-only workaround.
 public class MainActivity extends Activity {
 
-    private static final String RELAY_HOST = "10.0.2.2";
+    // Dev machine's LAN IP — phone and PC must be on the same WiFi network.
+    private static final String RELAY_HOST = "10.28.206.21";
     private static final int RELAY_PORT = 8787;
 
     private TextView statusText;
