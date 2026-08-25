@@ -33,6 +33,7 @@ echo "== 2/6 link resources + manifest (generate R.java) =="
   -I "$PLATFORM_JAR" \
   -R "$OUT/res.zip" \
   --java "$OUT/gen" \
+  --rename-manifest-package com.hrapp.remote \
   --min-sdk-version 26 --target-sdk-version 34 --auto-add-overlay
 
 echo "== 3/6 javac R.java =="
