@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- QUERY_ALL_PACKAGES: needed to list installed apps (§24). Play Store
          requires a declared use; for direct-APK distribution (ADR-0001) it's fine. -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
@@ -41,6 +43,12 @@
             android:name=".ScreenCaptureService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
+
+        <!-- Keeps the relay connection alive in the background. -->
+        <service
+            android:name=".ConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Remote touch/keyboard. User enables it by hand in Accessibility settings. -->
         <service

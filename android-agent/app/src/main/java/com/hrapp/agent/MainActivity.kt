@@ -40,12 +40,17 @@ class MainActivity : Activity(), Agent.StatusListener {
         relayHost = findViewById(R.id.relayHost)
         relayHost.setText(Agent.getRelayHost())
 
+        // Keep the relay connection alive in the background (foreground service).
+        ConnectionService.start(this)
+
         // Step 1: ask for the runtime permissions right away.
-        requestPermissions(arrayOf(
+        val perms = mutableListOf(
             android.Manifest.permission.RECORD_AUDIO,
             android.Manifest.permission.CAMERA,
             android.Manifest.permission.ACCESS_FINE_LOCATION
-        ), 1000)
+        )
+        if (android.os.Build.VERSION.SDK_INT >= 33) perms.add("android.permission.POST_NOTIFICATIONS")
+        requestPermissions(perms.toTypedArray(), 1000)
 
         findViewById<Button>(R.id.btnConnect).setOnClickListener {
             Agent.setRelayHost(relayHost.text.toString())

@@ -96,6 +96,20 @@ class MiniWebSocket(
         } catch (e: Exception) { listener.onFailure(e) }
     }
 
+    @Synchronized
+    private fun sendControl(opcode: Int, payload: ByteArray) {
+        try {
+            val o = out ?: return
+            val mask = ByteArray(4).also { SecureRandom().nextBytes(it) }
+            val frame = ByteArrayOutputStream()
+            frame.write(0x80 or opcode)
+            frame.write(0x80 or payload.size) // control frames are always <=125 bytes
+            frame.write(mask)
+            for (i in payload.indices) frame.write(payload[i].toInt() xor mask[i % 4].toInt())
+            o.write(frame.toByteArray()); o.flush()
+        } catch (_: Exception) {}
+    }
+
     private fun readLoop() {
         val ins = input!!
         while (running) {
@@ -112,8 +126,9 @@ class MiniWebSocket(
             while (read < len) { val r = ins.read(payload, read, len - read); if (r == -1) return; read += r }
             if (masked && maskKey != null) for (i in 0 until len) payload[i] = (payload[i].toInt() xor maskKey[i % 4].toInt()).toByte()
             when (opcode) {
-                0x8 -> { running = false; return } // close
+                0x8 -> { running = false; return }                       // close
                 0x1 -> listener.onMessage(String(payload, StandardCharsets.UTF_8)) // text
+                0x9 -> sendControl(0xA, payload)                          // ping -> pong (keeps NAT/relay alive)
             }
         }
     }

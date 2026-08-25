@@ -95,10 +95,24 @@ object Agent {
         })
     }
 
+    /** Stable identity so reconnects keep the SAME device_id — otherwise every
+     *  reconnect would orphan the controller's pairing. Generated once, persisted. */
+    private fun stableDeviceId(): String {
+        val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+        var id = prefs.getString("device_id", null)
+        if (id == null) {
+            id = UUID.randomUUID().toString()
+            prefs.edit().putString("device_id", id).apply()
+        }
+        return id
+    }
+
     private fun sendPairInit() {
+        deviceId = stableDeviceId()
         send(JSONObject().apply {
             put("message_type", "PAIR_INIT")
             put("request_id", UUID.randomUUID().toString())
+            put("device_id", deviceId) // relay reuses this id, so pairing survives reconnects
         })
     }
 
