@@ -43,7 +43,12 @@ ws.on('message', (raw) => {
 
     case 'START_SCREEN': startStream('screen', 'SCREEN_FRAME', '#1e3a8a'); break;
     case 'STOP_SCREEN':  stopStream('screen'); break;
-    case 'START_CAMERA': startStream('camera', 'CAMERA_FRAME', '#166534'); break;
+    case 'START_CAMERA': {
+      const facing = m.payload?.facing || 'back';
+      stopStream('camera');
+      startStream('camera', 'CAMERA_FRAME', facing === 'front' ? '#7c3aed' : '#166534', `camera ${facing}`);
+      break;
+    }
     case 'STOP_CAMERA':  stopStream('camera'); break;
     case 'START_MIC':    startMic(); break;
     case 'STOP_MIC':     stopMic(); break;
@@ -65,14 +70,14 @@ function svgFrame(color, label, t) {
   return Buffer.from(svg).toString('base64');
 }
 
-function startStream(id, frameType, color) {
+function startStream(id, frameType, color, label = id) {
   if (timers[id]) return;
-  console.log(`${id} stream started`);
-  send({ message_type: 'STREAM_STATUS', payload: { stream: id, state: 'started' } });
+  console.log(`${label} stream started`);
+  send({ message_type: 'STREAM_STATUS', payload: { stream: id, state: 'started', label } });
   let t = 0;
   timers[id] = setInterval(() => {
     t++;
-    send({ message_type: frameType, payload: { mime: 'image/svg+xml', b64: svgFrame(color, id, t) } });
+    send({ message_type: frameType, payload: { mime: 'image/svg+xml', b64: svgFrame(color, label, t) } });
   }, 250); // 4 fps
 }
 function stopStream(id) {

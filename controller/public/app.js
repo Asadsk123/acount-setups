@@ -137,12 +137,13 @@ function onMicChunk(p) {
 }
 function onStreamStatus(p) {
   const map = { screen: 'screenStatus', camera: 'cameraStatus', mic: 'micStatus' };
-  if (map[p.stream]) $(map[p.stream]).textContent = p.state;
+  if (map[p.stream]) $(map[p.stream]).textContent = p.label ? `${p.label} — ${p.state}` : p.state;
   if (p.state === 'started') { if (p.stream === 'screen') screenFrames = 0; if (p.stream === 'camera') cameraFrames = 0; if (p.stream === 'mic') micChunks = 0; }
 }
 $('screenStart').onclick = () => send({ message_type: 'START_SCREEN' });
 $('screenStop').onclick = () => send({ message_type: 'STOP_SCREEN' });
-$('cameraStart').onclick = () => send({ message_type: 'START_CAMERA' });
+$('cameraBack').onclick = () => { $('cameraStatus').textContent = 'starting back…'; send({ message_type: 'START_CAMERA', payload: { facing: 'back' } }); };
+$('cameraFront').onclick = () => { $('cameraStatus').textContent = 'starting front…'; send({ message_type: 'START_CAMERA', payload: { facing: 'front' } }); };
 $('cameraStop').onclick = () => send({ message_type: 'STOP_CAMERA' });
 $('micStart').onclick = () => send({ message_type: 'START_MIC' });
 $('micStop').onclick = () => send({ message_type: 'STOP_MIC' });

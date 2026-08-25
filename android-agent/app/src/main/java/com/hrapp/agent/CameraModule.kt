@@ -39,13 +39,16 @@ object CameraModule {
         return granted && cm.cameraIdList.isNotEmpty()
     }
 
-    fun start(context: Context) {
-        if (running) return
+    /** facing = "front" or "back" (defaults to back). Switching is stop+start. */
+    fun start(context: Context, facing: String = "back") {
+        if (running) stop() // allow switching cameras without an explicit stop first
         if (!isAvailable(context)) { Agent.log("START_CAMERA denied: CAMERA not granted / no camera"); return }
         val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val wantLens = if (facing == "front") CameraCharacteristics.LENS_FACING_FRONT else CameraCharacteristics.LENS_FACING_BACK
         val cameraId = cm.cameraIdList.firstOrNull {
-            cm.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+            cm.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == wantLens
         } ?: cm.cameraIdList.first()
+        Agent.log("camera start: $facing ($cameraId)")
 
         bgThread = HandlerThread("hrapp-camera").also { it.start() }
         bgHandler = Handler(bgThread!!.looper)

