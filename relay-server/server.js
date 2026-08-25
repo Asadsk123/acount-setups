@@ -18,6 +18,14 @@ const TO_AGENT = {
   LOCATION_REQUEST: null,
   INPUT_COMMAND: null,
   LOCK_REQUEST: null,
+  // Media stream control (controller → agent). Start/stop only; the frames
+  // and audio chunks flow back as the TO_CONTROLLER stream messages below.
+  START_SCREEN: null,
+  STOP_SCREEN: null,
+  START_CAMERA: null,
+  STOP_CAMERA: null,
+  START_MIC: null,
+  STOP_MIC: null,
 };
 // Agent→controller responses/events, forwarded verbatim + audited.
 const TO_CONTROLLER = new Set([
@@ -27,7 +35,14 @@ const TO_CONTROLLER = new Set([
   'INPUT_COMMAND_ACK',
   'LOCK_RESPONSE',
   'CAPABILITY_RESPONSE',
+  'SCREEN_FRAME',
+  'CAMERA_FRAME',
+  'MIC_CHUNK',
+  'STREAM_STATUS',
 ]);
+// High-rate stream frames: forward but DON'T write one audit line per frame
+// (would drown the log). Audited only on start/stop via STREAM_STATUS.
+const HIGH_RATE = new Set(['SCREEN_FRAME', 'CAMERA_FRAME', 'MIC_CHUNK']);
 
 // device_id -> { ws, role: 'agent' | 'controller', lastSeq }
 const connections = new Map();
@@ -147,10 +162,12 @@ wss.on('connection', (ws) => {
           const ackType = TO_AGENT[msg.message_type];
           if (ackType) send(ws, { message_type: ackType, request_id: msg.request_id, status: 'OK' });
         } else if (TO_CONTROLLER.has(msg.message_type)) {
-          const detail = msg.payload?.result ?? JSON.stringify(msg.payload ?? {}).slice(0, 80);
-          logAudit({ type: msg.message_type, deviceId: msg.device_id, detail });
           const controller = connections.get(`${msg.device_id}:controller`);
           if (controller) send(controller.ws, { message_type: msg.message_type, device_id: msg.device_id, payload: msg.payload });
+          if (!HIGH_RATE.has(msg.message_type)) {
+            const detail = msg.payload?.result ?? JSON.stringify(msg.payload ?? {}).slice(0, 80);
+            logAudit({ type: msg.message_type, deviceId: msg.device_id, detail });
+          }
         } else {
           send(ws, { message_type: 'ERROR', status: 'ERROR', error_code: 'NOT_SUPPORTED' });
         }

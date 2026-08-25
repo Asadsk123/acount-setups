@@ -26,8 +26,11 @@ CAPABILITY
 | `restrictions` | Device Admin / Accessibility, device-dependent | §25 |
 | `push_to_sound` | none (local playback only) | ADR-0004 |
 | `push_wakeup` | Google Play Services (FCM) or foreground-service notification | ADR-0002 |
-| `camera` | — | Phase 2, not v1 |
-| `microphone` | — | Phase 2, not v1 |
+| `screen` | `MediaProjection` consent (per-session, Android 14+) + mediaProjection foreground service | §19 — JPEG frame stream |
+| `camera` | `CAMERA` runtime permission | §27 — Camera2 JPEG stream; OS privacy indicator stays visible |
+| `mic` | `RECORD_AUDIO` runtime permission | §11 — PCM chunk stream; OS mic indicator stays visible |
 | `calling` | — | Phase 2, not v1 |
+
+**Deliberately absent — remote unlock.** No capability exists for it and none can: Android gives no third-party API to dismiss the lock screen or supply the user's credential. `lock` is offered; unlock is not (MASTER.md §17/§50).
 
 The controller must re-fetch this per device on every connect (`CAPABILITY_REQUEST`) — a capability granted last session may have been revoked since (MASTER.md §18).

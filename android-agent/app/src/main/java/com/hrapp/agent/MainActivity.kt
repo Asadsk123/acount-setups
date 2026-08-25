@@ -44,6 +44,12 @@ class MainActivity : AppCompatActivity(), Agent.StatusListener {
         findViewById<Button>(R.id.btnLocation).setOnClickListener {
             requestPermissions(arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), 1001)
         }
+        findViewById<Button>(R.id.btnMedia).setOnClickListener {
+            requestPermissions(arrayOf(
+                android.Manifest.permission.RECORD_AUDIO,
+                android.Manifest.permission.CAMERA
+            ), 1002)
+        }
     }
 
     override fun onResume() {

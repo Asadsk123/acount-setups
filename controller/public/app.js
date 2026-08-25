@@ -25,6 +25,10 @@ function route(msg) {
     case 'LOCK_RESPONSE': return setActionStatus(msg.payload.ok ? 'device locked' : 'lock failed — Device Admin not enabled on phone');
     case 'PLAY_SOUND_ACK': return setActionStatus(msg.status === 'OK' ? 'sound sent…' : 'sound failed: ' + msg.error_code);
     case 'PLAY_SOUND_RESULT': return setActionStatus('sound result: ' + msg.payload.result);
+    case 'SCREEN_FRAME': return onFrame('screenView', 'screenStatus', msg.payload);
+    case 'CAMERA_FRAME': return onFrame('cameraView', 'cameraStatus', msg.payload);
+    case 'MIC_CHUNK': return onMicChunk(msg.payload);
+    case 'STREAM_STATUS': return onStreamStatus(msg.payload);
   }
 }
 
@@ -50,7 +54,7 @@ function onAuth(msg) {
 
 // --- capabilities ---
 function onCaps(caps) {
-  const labels = { push_to_sound: 'Sound', device_info: 'Device info', location: 'Location', remote_input: 'Remote control', lock: 'Lock' };
+  const labels = { push_to_sound: 'Sound', device_info: 'Device info', location: 'Location', remote_input: 'Remote control', lock: 'Lock', screen: 'Screen', camera: 'Camera', mic: 'Mic' };
   $('caps').innerHTML = Object.entries(labels)
     .map(([k, label]) => `<span class="chip ${caps[k] ? 'on' : ''}">${label}${caps[k] ? '' : ' (off)'}</span>`).join('');
 }
@@ -104,6 +108,44 @@ $('textBtn').onclick = () => {
   send({ message_type: 'INPUT_COMMAND', payload: { action: 'text', text } });
   $('textInput').value = '';
 };
+
+// --- media streams (screen / camera / mic) ---
+let screenFrames = 0, cameraFrames = 0, micChunks = 0;
+function onFrame(imgId, statusId, p) {
+  $(imgId).src = `data:${p.mime || 'image/jpeg'};base64,${p.b64}`;
+  const n = imgId === 'screenView' ? (screenFrames += 1) : (cameraFrames += 1);
+  $(statusId).textContent = `live — ${n} frames`;
+}
+let audioCtx = null;
+function onMicChunk(p) {
+  micChunks += 1;
+  // Decode 16-bit PCM base64 -> Float32, play via WebAudio + drive a level meter.
+  const bytes = Uint8Array.from(atob(p.pcm_b64), (c) => c.charCodeAt(0));
+  const samples = new Int16Array(bytes.buffer);
+  let peak = 0;
+  const f32 = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) { f32[i] = samples[i] / 32768; peak = Math.max(peak, Math.abs(f32[i])); }
+  $('micLevel').style.width = Math.round(peak * 100) + '%';
+  $('micStatus').textContent = `receiving — ${micChunks} chunks`;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const buf = audioCtx.createBuffer(1, f32.length, p.sample_rate || 8000);
+    buf.getChannelData(0).set(f32);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf; src.connect(audioCtx.destination); src.start();
+  } catch {}
+}
+function onStreamStatus(p) {
+  const map = { screen: 'screenStatus', camera: 'cameraStatus', mic: 'micStatus' };
+  if (map[p.stream]) $(map[p.stream]).textContent = p.state;
+  if (p.state === 'started') { if (p.stream === 'screen') screenFrames = 0; if (p.stream === 'camera') cameraFrames = 0; if (p.stream === 'mic') micChunks = 0; }
+}
+$('screenStart').onclick = () => send({ message_type: 'START_SCREEN' });
+$('screenStop').onclick = () => send({ message_type: 'STOP_SCREEN' });
+$('cameraStart').onclick = () => send({ message_type: 'START_CAMERA' });
+$('cameraStop').onclick = () => send({ message_type: 'STOP_CAMERA' });
+$('micStart').onclick = () => send({ message_type: 'START_MIC' });
+$('micStop').onclick = () => send({ message_type: 'STOP_MIC' });
 
 // --- actions ---
 $('soundBtn').onclick = () => send({ message_type: 'PLAY_SOUND', payload: { sound_id: 'tan_tan' } });

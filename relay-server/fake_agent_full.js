@@ -19,7 +19,7 @@ ws.on('message', (raw) => {
     case 'AUTH_RESPONSE':
       if (m.status === 'OK') {
         console.log('AGENT_READY');
-        send({ message_type: 'CAPABILITY_RESPONSE', payload: { push_to_sound: true, device_info: true, location: true, remote_input: true, lock: true } });
+        send({ message_type: 'CAPABILITY_RESPONSE', payload: { push_to_sound: true, device_info: true, location: true, remote_input: true, lock: true, screen: true, camera: true, mic: true } });
       }
       break;
     case 'DEVICE_INFO_REQUEST':
@@ -40,5 +40,67 @@ ws.on('message', (raw) => {
       console.log('PLAY_SOUND:', m.payload.sound_id);
       send({ message_type: 'PLAY_SOUND_RESULT', payload: { result: 'PLAYED' } });
       break;
+
+    case 'START_SCREEN': startStream('screen', 'SCREEN_FRAME', '#1e3a8a'); break;
+    case 'STOP_SCREEN':  stopStream('screen'); break;
+    case 'START_CAMERA': startStream('camera', 'CAMERA_FRAME', '#166534'); break;
+    case 'STOP_CAMERA':  stopStream('camera'); break;
+    case 'START_MIC':    startMic(); break;
+    case 'STOP_MIC':     stopMic(); break;
   }
 });
+
+// --- streaming stand-ins: real agent sends JPEG (screen/camera) and PCM (mic);
+// here we synthesize equivalent frames so the controller's receive+display
+// path can be verified without a phone. ---
+const timers = {};
+
+function svgFrame(color, label, t) {
+  const cx = 40 + (Math.sin(t / 3) * 0.5 + 0.5) * 240;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">
+    <rect width="320" height="180" fill="${color}"/>
+    <circle cx="${cx.toFixed(0)}" cy="90" r="24" fill="#fbbf24"/>
+    <text x="12" y="28" fill="#fff" font-family="monospace" font-size="14">${label} ${t}</text>
+  </svg>`;
+  return Buffer.from(svg).toString('base64');
+}
+
+function startStream(id, frameType, color) {
+  if (timers[id]) return;
+  console.log(`${id} stream started`);
+  send({ message_type: 'STREAM_STATUS', payload: { stream: id, state: 'started' } });
+  let t = 0;
+  timers[id] = setInterval(() => {
+    t++;
+    send({ message_type: frameType, payload: { mime: 'image/svg+xml', b64: svgFrame(color, id, t) } });
+  }, 250); // 4 fps
+}
+function stopStream(id) {
+  if (!timers[id]) return;
+  clearInterval(timers[id]); delete timers[id];
+  console.log(`${id} stream stopped`);
+  send({ message_type: 'STREAM_STATUS', payload: { stream: id, state: 'stopped' } });
+}
+
+function startMic() {
+  if (timers.mic) return;
+  console.log('mic started');
+  send({ message_type: 'STREAM_STATUS', payload: { stream: 'mic', state: 'started' } });
+  const sampleRate = 8000, chunkSamples = 800; // 100ms chunks
+  let phase = 0;
+  timers.mic = setInterval(() => {
+    const buf = Buffer.alloc(chunkSamples * 2);
+    for (let i = 0; i < chunkSamples; i++) {
+      const v = Math.round(Math.sin(phase) * 12000);
+      buf.writeInt16LE(v, i * 2);
+      phase += 2 * Math.PI * 440 / sampleRate;
+    }
+    send({ message_type: 'MIC_CHUNK', payload: { pcm_b64: buf.toString('base64'), sample_rate: sampleRate } });
+  }, 100);
+}
+function stopMic() {
+  if (!timers.mic) return;
+  clearInterval(timers.mic); delete timers.mic;
+  console.log('mic stopped');
+  send({ message_type: 'STREAM_STATUS', payload: { stream: 'mic', state: 'stopped' } });
+}

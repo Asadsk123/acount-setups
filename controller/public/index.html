@@ -85,6 +85,38 @@
     </div>
 
     <div class="card">
+      <h2>Screen</h2>
+      <img id="screenView" alt="" style="width:100%; border-radius:8px; background:var(--card2); display:block; min-height:120px" />
+      <div class="row" style="margin-top:10px">
+        <button id="screenStart">Start screen</button>
+        <button class="ghost" id="screenStop">Stop</button>
+      </div>
+      <div class="status" id="screenStatus">idle</div>
+    </div>
+
+    <div class="card">
+      <h2>Camera</h2>
+      <img id="cameraView" alt="" style="width:100%; border-radius:8px; background:var(--card2); display:block; min-height:120px" />
+      <div class="row" style="margin-top:10px">
+        <button id="cameraStart">Start camera</button>
+        <button class="ghost" id="cameraStop">Stop</button>
+      </div>
+      <div class="status" id="cameraStatus">idle</div>
+    </div>
+
+    <div class="card">
+      <h2>Microphone</h2>
+      <div style="height:12px; background:var(--card2); border-radius:6px; overflow:hidden">
+        <div id="micLevel" style="height:100%; width:0%; background:var(--green); transition:width .1s"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="micStart">Start mic</button>
+        <button class="ghost" id="micStop">Stop</button>
+      </div>
+      <div class="status" id="micStatus">idle</div>
+    </div>
+
+    <div class="card">
       <h2>Actions</h2>
       <div class="row">
         <button class="green" id="soundBtn">Push to Sound</button>

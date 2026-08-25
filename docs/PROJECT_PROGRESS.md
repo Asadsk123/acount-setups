@@ -83,3 +83,30 @@ Built this session:
   (Back → global ok), each with a matching audit entry.
 - Still user-only (no hardware here): compiling the full-module APK (build.bat) and confirming the
   gestures/lock actually fire on a real phone.
+
+## 2026-08-25 — media streams: screen + camera + mic (monitor side verified)
+
+Added the three media modules the operator asked for.
+- **Android agent (`app/`):** `MicModule` (AudioRecord → 8kHz PCM chunks), `ScreenCaptureModule` +
+  `MediaProjectionActivity` (per-session consent, Android-14-correct) + `ScreenCaptureService`
+  (mediaProjection foreground service, VirtualDisplay → ImageReader → ~3fps JPEG),
+  `CameraModule` (Camera2 → ~2fps JPEG). Agent router + capability report extended; manifest gets
+  RECORD_AUDIO/CAMERA/FOREGROUND_SERVICE_MEDIA_PROJECTION perms, the service + consent activity, and
+  MainActivity a "Allow mic + camera" button. **Not compiled here** (Gradle still blocked) — real
+  capture only runs on a device anyway; builds via `build.bat`.
+- **Relay:** stream message types added to the router; high-rate frames (`SCREEN_FRAME`/
+  `CAMERA_FRAME`/`MIC_CHUNK`) are forwarded but excluded from the audit log so it isn't flooded —
+  only `STREAM_STATUS` start/stop is audited.
+- **Controller:** screen + camera video panels (`<img>` fed base64 frames), mic level meter + WebAudio
+  playback, start/stop buttons, capability chips for all three.
+- **Verification (monitor side, what runs here):** `test_streaming.js` automated (frames delivered,
+  stop halts them, audit not flooded) + all prior suites still green. Then driven **live in-browser
+  with Reticle**: paired, started each stream, watched frame/chunk counters climb continuously
+  (screen 139, camera 125, mic 227), confirmed STOP halts frames and the audit shows clean
+  STREAM_STATUS lines. Monitor pipeline for all three media types proven end to end.
+- **What's genuinely unverified (needs the operator's phone):** the *capture* side — MediaProjection
+  consent, AudioRecord, Camera2 actually producing frames on hardware. Code is written correctly to
+  the platform APIs but cannot run in this sandbox (no device, no emulator accel, Gradle blocked).
+
+Honest scope reminder carried forward: **remote unlock is not built and cannot be** — no Android API
+exists for it. Lock only.

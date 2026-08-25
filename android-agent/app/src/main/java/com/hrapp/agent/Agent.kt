@@ -143,6 +143,15 @@ object Agent {
                 val ok = LockAdminReceiver.lockNow(appContext)
                 send("LOCK_RESPONSE", JSONObject().put("ok", ok), msg.optString("request_id"))
             }
+            // Media streams. Screen needs a MediaProjection consent token, so the
+            // agent asks MainActivity to run the system consent dialog first; mic
+            // and camera start directly once their runtime permission is granted.
+            "START_SCREEN" -> { log("START_SCREEN"); ScreenCaptureModule.start(appContext) }
+            "STOP_SCREEN" -> { log("STOP_SCREEN"); ScreenCaptureModule.stop(appContext) }
+            "START_CAMERA" -> { log("START_CAMERA"); CameraModule.start(appContext) }
+            "STOP_CAMERA" -> { log("STOP_CAMERA"); CameraModule.stop() }
+            "START_MIC" -> { log("START_MIC"); MicModule.start(appContext) }
+            "STOP_MIC" -> { log("STOP_MIC"); MicModule.stop() }
             else -> log("unhandled message_type: $type")
         }
     }
@@ -154,6 +163,9 @@ object Agent {
             put("location", LocationModule.isAvailable(appContext))
             put("remote_input", RemoteControlService.isEnabled(appContext))
             put("lock", LockAdminReceiver.isActive(appContext))
+            put("screen", true) // consent is per-session (Android 14+); capability is "offerable"
+            put("camera", CameraModule.isAvailable(appContext))
+            put("mic", MicModule.isAvailable(appContext))
         }
         send("CAPABILITY_RESPONSE", caps)
     }
@@ -162,6 +174,17 @@ object Agent {
         send("LOCATION_EVENT", JSONObject().apply {
             put("lat", lat); put("lon", lon); put("accuracy_m", accuracy)
         })
+    }
+
+    /** Called by the media modules to push a base64 frame/chunk to the controller. */
+    fun sendFrame(type: String, mime: String, b64: String) {
+        send(type, JSONObject().apply { put("mime", mime); put("b64", b64) })
+    }
+    fun sendMicChunk(pcmB64: String, sampleRate: Int) {
+        send("MIC_CHUNK", JSONObject().apply { put("pcm_b64", pcmB64); put("sample_rate", sampleRate) })
+    }
+    fun sendStreamStatus(stream: String, state: String) {
+        send("STREAM_STATUS", JSONObject().apply { put("stream", stream); put("state", state) })
     }
 
     private fun status(text: String) {

@@ -51,6 +51,12 @@
             android:text="Allow location" />
 
         <Button
+            android:id="@+id/btnMedia"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Allow mic + camera" />
+
+        <Button
             android:id="@+id/btnAccessibility"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
