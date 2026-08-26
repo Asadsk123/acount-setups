@@ -6,11 +6,39 @@
 
 import { WebSocketServer } from 'ws';
 import { randomUUID, createHmac, randomBytes, randomInt } from 'crypto';
+import { createServer } from 'http';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 const MAX_PAIR_ATTEMPTS = 5; // per connection, before we stop accepting codes
 
 const PORT = process.env.PORT || 8787;
-const wss = new WebSocketServer({ port: PORT });
+
+// One HTTP server on PORT serves the download page + APK AND upgrades to the
+// WebSocket relay — so a single tunnel URL gives a remote phone BOTH the app
+// download and the pairing connection (no ADB/USB needed for normal install).
+const HERE = import.meta.dirname;
+const APK_PATH = join(HERE, '..', 'hrapp-remote.apk');
+async function serveFile(res, path, type, disposition) {
+  try {
+    const body = await readFile(path);
+    const headers = { 'Content-Type': type };
+    if (disposition) headers['Content-Disposition'] = disposition;
+    res.writeHead(200, headers); res.end(body);
+  } catch { res.writeHead(404); res.end('not found'); }
+}
+const httpServer = createServer(async (req, res) => {
+  const url = (req.url || '/').split('?')[0];
+  if (url === '/audit') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify(audit.slice(0, 50)));
+  }
+  if (url === '/hrapp-remote.apk') return serveFile(res, APK_PATH, 'application/vnd.android.package-archive', 'attachment; filename="hrapp-remote.apk"');
+  if (url === '/download/agent/help') return serveFile(res, join(HERE, 'download-help.html'), 'text/html');
+  if (url === '/download/agent' || url === '/download' || url === '/') return serveFile(res, join(HERE, 'download.html'), 'text/html');
+  res.writeHead(404); res.end('not found');
+});
+const wss = new WebSocketServer({ server: httpServer });
 
 // Controller→agent commands. Value = ACK message_type sent back to the
 // controller synchronously (null = no synchronous ack, the agent replies async).
@@ -218,8 +246,8 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Minimal HTTP audit endpoint for the controller UI to poll (no separate HTTP framework — ponytail).
-import { createServer } from 'http';
+// Keep the legacy audit-only endpoint on PORT+1 too, so the local controller
+// UI (which polls :8788) keeps working unchanged.
 createServer((req, res) => {
   if (req.url === '/audit') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -230,4 +258,6 @@ createServer((req, res) => {
   }
 }).listen(PORT + 1);
 
-console.log(`Relay WS listening on ${PORT}, audit HTTP on ${PORT + 1}`);
+httpServer.listen(PORT, () => {
+  console.log(`Relay WS + HTTP on ${PORT} (download page: /download/agent, apk: /hrapp-remote.apk), audit also on ${PORT + 1}`);
+});
