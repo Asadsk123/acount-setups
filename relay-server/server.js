@@ -5,7 +5,9 @@
 // needs to survive a restart or scale past one process.
 
 import { WebSocketServer } from 'ws';
-import { randomUUID, createHmac, randomBytes } from 'crypto';
+import { randomUUID, createHmac, randomBytes, randomInt } from 'crypto';
+
+const MAX_PAIR_ATTEMPTS = 5; // per connection, before we stop accepting codes
 
 const PORT = process.env.PORT || 8787;
 const wss = new WebSocketServer({ port: PORT });
@@ -87,6 +89,8 @@ function verifySessionToken(deviceId, secret, token) {
 
 wss.on('connection', (ws) => {
   let boundDeviceId = null;
+  let boundRole = null; // 'agent' | 'controller' — set only after successful AUTH_REQUEST
+  let pairAttempts = 0; // failed PAIR_REQUEST tries on this connection (brute-force guard)
 
   ws.on('message', (raw) => {
     let msg;
@@ -99,7 +103,7 @@ wss.on('connection', (ws) => {
     switch (msg.message_type) {
       // Agent asks for a pairing code to show as QR/PIN on its own screen.
       case 'PAIR_INIT': {
-        const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit PIN
+        const code = String(randomInt(100000, 1000000)); // crypto-random 6-digit PIN (not guessable)
         const deviceId = msg.device_id || randomUUID();
         const secret = randomBytes(32).toString('hex');
         // Secret is live immediately — the agent authenticates as soon as it
@@ -114,8 +118,15 @@ wss.on('connection', (ws) => {
 
       // Controller enters the PIN shown on the phone.
       case 'PAIR_REQUEST': {
+        // Brute-force guard: a 6-digit code has 900k possibilities; without a cap
+        // one socket could try them all within the 5-min window. Stop after a few.
+        if (pairAttempts >= MAX_PAIR_ATTEMPTS) {
+          logAudit({ type: 'PAIR_THROTTLED', detail: 'too many attempts' });
+          return send(ws, { message_type: 'PAIR_RESPONSE', request_id: msg.request_id, status: 'ERROR', error_code: 'RATE_LIMITED' });
+        }
         const entry = pendingPairings.get(msg.payload?.pairing_code);
         if (!entry || entry.expiresAt < Date.now()) {
+          pairAttempts++;
           return send(ws, { message_type: 'PAIR_RESPONSE', request_id: msg.request_id, status: 'ERROR', error_code: 'NOT_SUPPORTED' });
         }
         const secret = pairedDevices.get(entry.deviceId);
@@ -142,6 +153,7 @@ wss.on('connection', (ws) => {
           return send(ws, { message_type: 'AUTH_RESPONSE', status: 'ERROR', error_code: 'AUTH_FAILED' });
         }
         boundDeviceId = device_id;
+        boundRole = role;
         connections.set(`${device_id}:${role}`, { ws, role, deviceId: device_id });
         send(ws, { message_type: 'AUTH_RESPONSE', status: 'OK', payload: { device_id } });
         logAudit({ type: 'AUTH_OK', deviceId: device_id, detail: role });
@@ -158,6 +170,15 @@ wss.on('connection', (ws) => {
         // Adding a new module = add its message_type to one of these tables;
         // no new case needed (MASTER.md §40 — features are additive).
         if (msg.message_type in TO_AGENT) {
+          // AUTHORIZATION: only the authenticated controller bound to THIS device
+          // may send it commands. Without this, any socket could drive any paired
+          // device's camera/mic/screen (MASTER.md §17; parallel-dev prompt §15).
+          if (boundRole !== 'controller' || boundDeviceId !== msg.device_id) {
+            logAudit({ type: 'UNAUTHORIZED_COMMAND', deviceId: msg.device_id, detail: msg.message_type });
+            const ackType = TO_AGENT[msg.message_type];
+            const err = { message_type: ackType || 'ERROR', request_id: msg.request_id, status: 'ERROR', error_code: 'AUTH_ERROR' };
+            return send(ws, err);
+          }
           const target = connections.get(`${msg.device_id}:agent`);
           const detail = msg.payload?.sound_id || msg.payload?.action || '';
           if (!target) {
@@ -171,6 +192,13 @@ wss.on('connection', (ws) => {
           const ackType = TO_AGENT[msg.message_type];
           if (ackType) send(ws, { message_type: ackType, request_id: msg.request_id, status: 'OK' });
         } else if (TO_CONTROLLER.has(msg.message_type)) {
+          // AUTHORIZATION: only the authenticated agent bound to THIS device may
+          // push responses/frames to its controller — stops a rogue socket from
+          // injecting fake results or spoofed camera/screen frames.
+          if (boundRole !== 'agent' || boundDeviceId !== msg.device_id) {
+            logAudit({ type: 'UNAUTHORIZED_EVENT', deviceId: msg.device_id, detail: msg.message_type });
+            return send(ws, { message_type: 'ERROR', status: 'ERROR', error_code: 'AUTH_ERROR' });
+          }
           const controller = connections.get(`${msg.device_id}:controller`);
           if (controller) send(controller.ws, { message_type: msg.message_type, device_id: msg.device_id, payload: msg.payload });
           if (!HIGH_RATE.has(msg.message_type)) {
