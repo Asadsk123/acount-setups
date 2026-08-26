@@ -9,6 +9,7 @@ import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.Base64
+import javax.net.ssl.SSLSocketFactory
 
 /**
  * Minimal RFC 6455 WebSocket client (masked client text frames only, no TLS, no
@@ -22,7 +23,8 @@ class MiniWebSocket(
     private val host: String,
     private val port: Int,
     private val path: String,
-    private val listener: Listener
+    private val listener: Listener,
+    private val tls: Boolean = false   // true for wss:// (internet / tunnel)
 ) {
     interface Listener {
         fun onOpen()
@@ -40,7 +42,7 @@ class MiniWebSocket(
 
     private fun runLoop() {
         try {
-            val s = Socket(host, port)
+            val s = if (tls) SSLSocketFactory.getDefault().createSocket(host, port) else Socket(host, port)
             socket = s
             out = s.getOutputStream()
             input = s.getInputStream()
@@ -58,8 +60,10 @@ class MiniWebSocket(
     private fun handshake() {
         val keyBytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
         val key = Base64.getEncoder().encodeToString(keyBytes)
+        // Standard ports are omitted from Host (Cloudflare/tunnels expect the bare domain).
+        val hostHeader = if ((tls && port == 443) || (!tls && port == 80)) host else "$host:$port"
         val req = "GET $path HTTP/1.1\r\n" +
-            "Host: $host:$port\r\n" +
+            "Host: $hostHeader\r\n" +
             "Upgrade: websocket\r\n" +
             "Connection: Upgrade\r\n" +
             "Sec-WebSocket-Key: $key\r\n" +

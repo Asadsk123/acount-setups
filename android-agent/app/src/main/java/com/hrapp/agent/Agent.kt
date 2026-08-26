@@ -22,8 +22,11 @@ object Agent {
     // the user edits on first launch. This is why pairing "does nothing" if the
     // IP is wrong — the agent can't reach the relay to get a code.
     private const val PREF = "agent_config"
+    // The user enters a full server address. Two shapes:
+    //  - LAN (same Wi-Fi):  192.168.1.5   or  ws://192.168.1.5:8787
+    //  - Internet (remote): wss://abcd-1234.trycloudflare.com   (from the tunnel)
     private const val DEFAULT_HOST = "192.168.1.100"
-    private const val PORT = 8787
+    private const val DEFAULT_PORT = 8787
 
     interface StatusListener {
         fun onStatus(text: String)
@@ -59,9 +62,25 @@ object Agent {
         connect()
     }
 
+    /** Parse whatever the user typed into (tls, host, port). Accepts a bare IP,
+     *  ws://host:port, or wss://domain. This is what makes internet (tunnel) work. */
+    private fun parseTarget(raw: String): Triple<Boolean, String, Int> {
+        var s = raw.trim()
+        var tls = false
+        if (s.startsWith("wss://") || s.startsWith("https://")) { tls = true; s = s.substringAfter("://") }
+        else if (s.startsWith("ws://") || s.startsWith("http://")) { s = s.substringAfter("://") }
+        s = s.substringBefore("/") // drop any path
+        val host: String
+        val port: Int
+        if (s.contains(":")) { host = s.substringBefore(":"); port = s.substringAfter(":").toIntOrNull() ?: DEFAULT_PORT }
+        else { host = s; port = if (tls) 443 else DEFAULT_PORT }
+        return Triple(tls, host, port)
+    }
+
     private fun connect() {
-        status("connecting to ${getRelayHost()}…")
-        ws = MiniWebSocket(getRelayHost(), PORT, "/", object : MiniWebSocket.Listener {
+        val (tls, host, port) = parseTarget(getRelayHost())
+        status("connecting to $host…")
+        ws = MiniWebSocket(host, port, "/", object : MiniWebSocket.Listener {
             override fun onOpen() {
                 log("relay connected")
                 sendPairInit()
@@ -77,7 +96,7 @@ object Agent {
             override fun onClosed() {
                 status("disconnected")
             }
-        }).also { it.connectAsync() }
+        }, tls).also { it.connectAsync() }
     }
 
     fun send(json: JSONObject) {

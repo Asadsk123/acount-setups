@@ -61,10 +61,15 @@ echo "== 5/6 d8 (dex: app + R + kotlin-stdlib) =="
   $(find "$OUT/classes" -name "*.class") \
   $(find "$OUT/kotlin_classes" -name "*.class")
 
-echo "== 6/6 package + sign =="
+echo "== 6/6 package + align + sign =="
 cd "$OUT/apk"
 cp base.apk app_unsigned.apk
 "$JAVA_HOME/bin/jar.exe" uf app_unsigned.apk classes.dex
+# zipalign is REQUIRED: Android 11+ (API 30+) rejects an APK whose resources.arsc
+# is not 4-byte aligned with "App not installed" — this is why the bigger app
+# would not install on the phone while the tiny old one happened to. -p aligns
+# resources.arsc/.so to page boundaries; must run BEFORE apksigner.
+"$BT/zipalign.exe" -p -f 4 app_unsigned.apk app_aligned.apk
 cd "$HERE"
 # Stable signing key so every rebuild installs as an UPDATE over the last one
 # (no uninstall). Keep this keystore — changing it forces users to uninstall.
@@ -80,8 +85,9 @@ if [ ! -f "$KS" ]; then
 fi
 "$BT/apksigner.bat" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --ks-key-alias androiddebugkey \
-  --out "$OUT/apk/hrapp-agent.apk" "$OUT/apk/app_unsigned.apk"
+  --out "$OUT/apk/hrapp-agent.apk" "$OUT/apk/app_aligned.apk"
 "$BT/apksigner.bat" verify "$OUT/apk/hrapp-agent.apk" && echo "SIGNATURE OK"
+"$BT/zipalign.exe" -c -p 4 "$OUT/apk/hrapp-agent.apk" && echo "ALIGNMENT OK"
 
 echo
 echo "BUILD OK -> $OUT/apk/hrapp-agent.apk"
