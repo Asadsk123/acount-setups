@@ -89,5 +89,10 @@ fi
 "$BT/apksigner.bat" verify "$OUT/apk/hrapp-agent.apk" && echo "SIGNATURE OK"
 "$BT/zipalign.exe" -c -p 4 "$OUT/apk/hrapp-agent.apk" && echo "ALIGNMENT OK"
 
+# Publish to the controller so the dashboard's download button always serves the
+# latest build, and to the repo root for convenience.
+cp "$OUT/apk/hrapp-agent.apk" "$HERE/../controller/public/hrapp-remote.apk"
+cp "$OUT/apk/hrapp-agent.apk" "$HERE/../hrapp-remote.apk"
+
 echo
-echo "BUILD OK -> $OUT/apk/hrapp-agent.apk"
+echo "BUILD OK -> $OUT/apk/hrapp-agent.apk (published to controller + repo root)"
