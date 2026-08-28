@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HRAPP Agent — Install help</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px 18px;
+    background: #0f1115; color: #e6e6e6; line-height: 1.5; }
+  h1 { font-size: 19px; } h2 { font-size: 15px; margin-top: 22px; color: #cbd5e1; }
+  .muted { color: #8b93a1; font-size: 13px; } code { background: #22262f; padding: 2px 6px; border-radius: 5px; }
+  a { color:#60a5fa; }
+</style>
+</head>
+<body>
+  <h1>Install troubleshooting</h1>
+
+  <h2>"Install unknown apps" is blocked</h2>
+  <div class="muted">On the block screen tap <b>Settings</b> → turn on <b>Allow from this source</b> for the browser/Files app you opened the APK from → go back → Install. You do this once per source.</div>
+
+  <h2>Xiaomi / POCO / Redmi (HyperOS / MIUI): "App not installed" or a security scan</h2>
+  <div class="muted">HyperOS scans sideloaded apps. On the warning, look for <b>More details</b> → <b>Install anyway</b>. If installation via a cable/adb shows <code>INSTALL_FAILED_USER_RESTRICTED</code>, that is the "Install via USB" developer setting — for a normal file install you do NOT need it; use the download + tap flow instead. Enabling "Install via USB" on Xiaomi requires a Mi account sign-in.</div>
+
+  <h2>APK won't open / "no app to open this file"</h2>
+  <div class="muted">Use a file manager (Files) to open it from the Downloads folder, or re-download.</div>
+
+  <h2>Old HRAPP version already installed</h2>
+  <div class="muted">This app (<code>com.hrapp.remote</code>) installs alongside any older <code>com.hrapp.agent</code> build. To update this one, just install the newer APK over it — same signing key, higher version, no uninstall needed.</div>
+
+  <h2>Update conflict / "app not installed as package conflicts"</h2>
+  <div class="muted">A different-signature build of the same package is installed. Uninstall that one, then install this.</div>
+
+  <h2>Not enough storage / unsupported Android</h2>
+  <div class="muted">The app needs ~2 MB free and Android 8.0 (API 26) or newer.</div>
+
+  <div class="muted" style="margin-top:24px">We never ask you to disable Play Protect or bypass Android security. If your device policy blocks installs, that policy must be changed by you (the device owner) in Settings.</div>
+  <p><a href="/">← Back to download</a></p>
+</body>
+</html>
