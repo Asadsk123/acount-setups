@@ -13,3 +13,6 @@ android-agent/manual-build/out/
 
 # keep signing key out of git
 android-agent/hrapp-release.keystore
+
+# jvm-harness build output
+android-agent/jvm-harness/out/
