@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.hrapp.agent"
-    android:versionCode="2"
+    android:versionCode="3"
     android:versionName="1.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -55,7 +55,7 @@
         <!-- Remote touch/keyboard. User enables it by hand in Accessibility settings. -->
         <service
             android:name=".RemoteControlService"
-            android:exported="false"
+            android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
@@ -68,7 +68,7 @@
         <!-- Notification mirroring. User enables "Notification access" by hand. -->
         <service
             android:name=".NotificationListenerModule"
-            android:exported="false"
+            android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
