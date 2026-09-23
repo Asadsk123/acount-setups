@@ -87,7 +87,7 @@ class RemoteControlService : AccessibilityService() {
 
     private fun doText(text: String): Boolean {
         val root = rootInActiveWindow ?: return false
-        val focused = root.findFocus(AccessibilityEvent.TYPE_VIEW_FOCUSED) ?: return false
+        val focused = root.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
         val args = android.os.Bundle().apply {
             putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         }

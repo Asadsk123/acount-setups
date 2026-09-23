@@ -49,12 +49,14 @@ object CameraModule {
         } ?: cm.cameraIdList.first()
         Agent.log("camera start: $facing ($cameraId)")
 
-        bgThread = HandlerThread("hrapp-camera").also { it.start() }
-        bgHandler = Handler(bgThread!!.looper)
+        val thread = HandlerThread("hrapp-camera").also { it.start() }
+        bgThread = thread
+        bgHandler = Handler(thread.looper)
 
-        val sizes = cm.getCameraCharacteristics(cameraId)
-            .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-            .getOutputSizes(ImageFormat.JPEG)
+        val streamMap = cm.getCameraCharacteristics(cameraId)
+            .get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            ?: run { Agent.log("camera: no stream config map"); return }
+        val sizes = streamMap.getOutputSizes(ImageFormat.JPEG)
         val size = sizes.minByOrNull { it.width.toLong() * it.height } ?: sizes.first()
 
         reader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2).apply {
@@ -77,8 +79,8 @@ object CameraModule {
                 override fun onOpened(camera: CameraDevice) {
                     cameraDevice = camera
                     val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-                        .apply { addTarget(reader!!.surface) }
-                    camera.createCaptureSession(listOf(reader!!.surface), object : CameraCaptureSession.StateCallback() {
+                        .apply { addTarget(reader?.surface ?: return@onOpened) }
+                    camera.createCaptureSession(listOf(reader?.surface ?: return@onOpened), object : CameraCaptureSession.StateCallback() {
                         override fun onConfigured(s: CameraCaptureSession) {
                             session = s
                             running = true

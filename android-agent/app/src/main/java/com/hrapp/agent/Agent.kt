@@ -144,7 +144,7 @@ object Agent {
     }
 
     private fun handleMessage(text: String) {
-        val msg = JSONObject(text)
+        val msg = try { JSONObject(text) } catch (e: Exception) { log("bad JSON from relay: ${e.message}"); return }
         when (val type = msg.optString("message_type")) {
             "PAIR_INIT_RESPONSE" -> {
                 val payload = msg.getJSONObject("payload")
@@ -163,7 +163,7 @@ object Agent {
                 }
             }
             "PLAY_SOUND" -> {
-                val soundId = msg.getJSONObject("payload").optString("sound_id", "tan_tan")
+                val soundId = msg.optJSONObject("payload")?.optString("sound_id", "tan_tan") ?: "tan_tan"
                 log("PLAY_SOUND received: $soundId")
                 SoundModule.play(appContext, soundId)
                 send("PLAY_SOUND_RESULT", JSONObject().put("result", "PLAYED"))
@@ -177,10 +177,11 @@ object Agent {
                 LocationModule.requestOnce(appContext)
             }
             "INPUT_COMMAND" -> {
-                val payload = msg.getJSONObject("payload")
-                log("INPUT_COMMAND: ${payload.optString("action")}")
+                val payload = msg.optJSONObject("payload") ?: run { log("INPUT_COMMAND: missing payload"); return }
+                val action = payload.optString("action")
+                log("INPUT_COMMAND: $action")
                 val ok = RemoteControlService.dispatch(payload)
-                send("INPUT_COMMAND_ACK", JSONObject().put("ok", ok), msg.optString("request_id"))
+                send("INPUT_COMMAND_ACK", JSONObject().put("ok", ok).put("action", action), msg.optString("request_id"))
             }
             "LOCK_REQUEST" -> {
                 log("LOCK_REQUEST received")
@@ -205,13 +206,13 @@ object Agent {
                 send("APPS_RESPONSE", AppsModule.listApps(appContext), msg.optString("request_id"))
             }
             "SET_APP_POLICY" -> {
-                val p = msg.getJSONObject("payload")
+                val p = msg.optJSONObject("payload") ?: run { log("SET_APP_POLICY: missing payload"); return }
                 log("SET_APP_POLICY: ${p.optString("pkg")}")
                 AppsModule.setPolicy(appContext, p.getString("pkg"), p.optBoolean("blocked"), p.optLong("limit_seconds"))
                 send("APP_POLICY_ACK", p, msg.optString("request_id"))
             }
             "UNINSTALL_REQUEST" -> {
-                val pkg = msg.getJSONObject("payload").getString("pkg")
+                val pkg = msg.optJSONObject("payload")?.optString("pkg") ?: run { log("UNINSTALL_REQUEST: missing pkg"); return }
                 log("UNINSTALL_REQUEST: $pkg")
                 AppsModule.requestUninstall(appContext, pkg)
                 send("UNINSTALL_ACK", JSONObject().put("pkg", pkg).put("state", "prompted-on-device"), msg.optString("request_id"))

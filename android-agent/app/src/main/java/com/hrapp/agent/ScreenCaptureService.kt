@@ -71,7 +71,9 @@ class ScreenCaptureService : Service() {
                     val bmp = Bitmap.createBitmap(rowStride / plane.pixelStride, h, Bitmap.Config.ARGB_8888)
                     bmp.copyPixelsFromBuffer(plane.buffer)
                     val out = ByteArrayOutputStream()
-                    Bitmap.createBitmap(bmp, 0, 0, w, h).compress(Bitmap.CompressFormat.JPEG, 50, out)
+                    val cropped = Bitmap.createBitmap(bmp, 0, 0, w, h)
+                    cropped.compress(Bitmap.CompressFormat.JPEG, 50, out)
+                    cropped.recycle()
                     Agent.sendFrame("SCREEN_FRAME", "image/jpeg", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
                     bmp.recycle()
                 }
