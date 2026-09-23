@@ -14,9 +14,10 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.util.Base64
-import android.util.DisplayMetrics
 import java.io.ByteArrayOutputStream
 
 /**
@@ -36,6 +37,9 @@ class ScreenCaptureService : Service() {
     private var imageReader: ImageReader? = null
     @Volatile private var lastFrameAt = 0L
     private val minFrameGapMs = 333L // ~3 fps
+    // Dedicated thread so JPEG compression never runs on the main looper.
+    private var captureThread: HandlerThread? = null
+    private var captureHandler: Handler? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -47,6 +51,9 @@ class ScreenCaptureService : Service() {
 
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projection = mpm.getMediaProjection(resultCode, resultData)
+        val thread = HandlerThread("hrapp-screen").also { it.start() }
+        captureThread = thread
+        captureHandler = Handler(thread.looper)
         startCapture()
         Agent.sendStreamStatus("screen", "started")
         return START_NOT_STICKY
@@ -78,7 +85,7 @@ class ScreenCaptureService : Service() {
                     bmp.recycle()
                 }
             } finally { image.close() }
-        }, null)
+        }, captureHandler)
 
         virtualDisplay = projection?.createVirtualDisplay(
             "hrapp-screen", w, h, metrics.densityDpi,
@@ -91,6 +98,7 @@ class ScreenCaptureService : Service() {
         virtualDisplay?.release()
         imageReader?.close()
         projection?.stop()
+        captureThread?.quitSafely()
     }
 
     private fun startForegroundNotification() {

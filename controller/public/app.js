@@ -4,10 +4,36 @@ const RELAY_AUDIT = `http://${location.hostname}:8788/audit`;
 let ws = null, deviceId = null, sessionToken = null;
 const $ = (id) => document.getElementById(id);
 
+// ── Persistent session ────────────────────────────────────────────────────────
+// After pairing, session_token + device_id are stored in localStorage so that
+// page refresh / relay restart does not force a re-pair.
+// NOTE: localStorage is per-origin, per-browser — not cross-device.
+function loadSession() {
+  try { const s = localStorage.getItem('hrapp_session'); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function saveSession(did, token) {
+  try { localStorage.setItem('hrapp_session', JSON.stringify({ device_id: did, session_token: token })); } catch {}
+}
+function clearSession() {
+  try { localStorage.removeItem('hrapp_session'); } catch {}
+}
+
 function connectWs() {
   ws = new WebSocket(RELAY_WS);
-  ws.onopen = () => { $('pairBtn').disabled = false; };
-  ws.onclose = () => setStatus('relay disconnected', false);
+  ws.onopen = () => {
+    const stored = loadSession();
+    if (stored && stored.device_id && stored.session_token) {
+      // Try to restore session without re-pairing.
+      deviceId = stored.device_id;
+      sessionToken = stored.session_token;
+      $('pairStatus').textContent = 'reconnecting…';
+      ws.send(JSON.stringify({ message_type: 'AUTH_REQUEST', request_id: crypto.randomUUID(),
+        device_id: deviceId, role: 'controller', payload: { session_token: sessionToken } }));
+    } else {
+      $('pairBtn').disabled = false;
+    }
+  };
+  ws.onclose = () => { setStatus('relay disconnected', false); setTimeout(connectWs, 3000); };
   ws.onmessage = (ev) => route(JSON.parse(ev.data));
 }
 connectWs();
@@ -46,10 +72,19 @@ $('pairBtn').onclick = () => {
 function onPair(msg) {
   if (msg.status !== 'OK') { $('pairStatus').textContent = 'Wrong or expired code.'; return; }
   deviceId = msg.payload.device_id; sessionToken = msg.payload.session_token;
+  saveSession(deviceId, sessionToken);
   send({ message_type: 'AUTH_REQUEST', role: 'controller', payload: { session_token: sessionToken } });
 }
 function onAuth(msg) {
-  if (msg.status !== 'OK') { $('pairStatus').textContent = 'Auth failed.'; return; }
+  if (msg.status !== 'OK') {
+    // Token rejected (relay cold-start after losing paired-devices.json).
+    clearSession(); deviceId = null; sessionToken = null;
+    $('pairCard').classList.remove('hidden');
+    $('dash').classList.add('hidden');
+    $('pairBtn').disabled = false;
+    $('pairStatus').textContent = 'Session expired — please re-pair.';
+    return;
+  }
   $('pairCard').classList.add('hidden');
   $('dash').classList.remove('hidden');
   setStatus('Paired — device ' + deviceId.slice(0, 8), true);

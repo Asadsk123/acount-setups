@@ -7,12 +7,24 @@
 import { WebSocketServer } from 'ws';
 import { randomUUID, createHmac, randomBytes, randomInt } from 'crypto';
 import { createServer } from 'http';
-import { readFile } from 'fs/promises';
+import { readFile, writeFile, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 const MAX_PAIR_ATTEMPTS = 5; // per connection, before we stop accepting codes
 
 const PORT = process.env.PORT || 8787;
+
+// ── Persistent pairing ────────────────────────────────────────────────────────
+// pairedDevices is saved to disk so relay restarts don't force re-pairing.
+// Secret is the HMAC key shared with the controller's session token; it is
+// never sent to the agent (agent trusts relay implicitly via device_id ownership).
+const PAIRED_FILE = join(import.meta.dirname, 'paired-devices.json');
+function savePaired() {
+  writeFile(PAIRED_FILE, JSON.stringify(Object.fromEntries(pairedDevices)), () => {});
+}
+// Load saved pairings before the Maps are used — must come AFTER the Map is
+// declared, so we forward-reference it; the declaration is a few lines below.
+// Handled in the init block at the bottom of this section.
 
 // One HTTP server on PORT serves the download page + APK AND upgrades to the
 // WebSocket relay — so a single tunnel URL gives a remote phone BOTH the app
@@ -92,6 +104,15 @@ const pairedDevices = new Map();
 // audit log, newest first, capped
 const audit = [];
 
+// Load persisted pairings (must come after pairedDevices is defined above).
+if (existsSync(PAIRED_FILE)) {
+  try {
+    const saved = JSON.parse(readFileSync(PAIRED_FILE, 'utf8'));
+    for (const [id, secret] of Object.entries(saved)) pairedDevices.set(id, secret);
+    console.log(`[PAIR] Loaded ${pairedDevices.size} persisted pairing(s)`);
+  } catch (e) { console.warn('[PAIR] Could not load paired-devices.json:', e.message); }
+}
+
 function logAudit(event) {
   audit.unshift({ ...event, at: new Date().toISOString() });
   if (audit.length > 500) audit.pop();
@@ -138,6 +159,7 @@ wss.on('connection', (ws) => {
         // holds device_id+secret, it does not need to wait for a controller
         // to claim the pairing code first.
         pairedDevices.set(deviceId, secret);
+        savePaired();
         pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 5 * 60_000 });
         send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code } });
         logAudit({ type: 'PAIR_INIT', deviceId, detail: 'pairing code issued' });

@@ -39,6 +39,10 @@ object Agent {
     var deviceId: String? = null
         private set
     private var statusListener: StatusListener? = null
+    // Retained so onResume() can re-display the code if it arrived before the
+    // listener was registered (race: Application.onCreate starts the WS before
+    // MainActivity.onResume registers the callback).
+    private var lastPairingCode: String? = null
     private lateinit var appContext: Application
 
     fun init(app: Application) {
@@ -49,6 +53,8 @@ object Agent {
 
     fun setStatusListener(listener: StatusListener?) {
         statusListener = listener
+        // Re-deliver any code that arrived before this listener was registered.
+        if (listener != null) lastPairingCode?.let { mainHandler.post { listener.onPairingCode(it) } }
     }
 
     fun getRelayHost(): String =
@@ -59,6 +65,7 @@ object Agent {
         appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).apply()
         ws?.close()
         deviceId = null
+        lastPairingCode = null
         connect()
     }
 
@@ -82,8 +89,18 @@ object Agent {
         status("connecting to $host…")
         ws = MiniWebSocket(host, port, "/", object : MiniWebSocket.Listener {
             override fun onOpen() {
-                log("relay connected")
-                sendPairInit()
+                log("[PAIR] WS_OPEN")
+                // If we already have a stable device_id the relay may know us —
+                // try AUTH directly to skip the pairing-code screen on reconnect.
+                // AUTH_RESPONSE FAIL → sendPairInit() is called as fallback.
+                val stored = appContext.getSharedPreferences(PREF, 0).getString("device_id", null)
+                if (stored != null) {
+                    deviceId = stored
+                    log("[PAIR] have device_id — attempting re-auth")
+                    sendAuth()
+                } else {
+                    sendPairInit()
+                }
             }
             override fun onMessage(text: String) {
                 mainHandler.post { handleMessage(text) }
@@ -150,16 +167,23 @@ object Agent {
                 val payload = msg.getJSONObject("payload")
                 deviceId = payload.getString("device_id")
                 val code = payload.getString("pairing_code")
+                lastPairingCode = code
                 mainHandler.post { statusListener?.onPairingCode(code) }
                 log("pairing code issued: $code")
                 sendAuth()
             }
             "AUTH_RESPONSE" -> {
                 if (msg.optString("status") == "OK") {
+                    log("[PAIR] AUTH_OK — ready")
+                    lastPairingCode = null // clear stale code from display on success
+                    mainHandler.post { statusListener?.onPairingCode("") }
                     status("paired — waiting for commands")
                     sendCapabilities()
                 } else {
-                    status("auth failed")
+                    // Relay doesn't recognise this device (e.g. relay cold-start before
+                    // paired-devices.json was introduced, or device_id rotated).
+                    log("[PAIR] AUTH failed — sending PAIR_INIT")
+                    sendPairInit()
                 }
             }
             "PLAY_SOUND" -> {

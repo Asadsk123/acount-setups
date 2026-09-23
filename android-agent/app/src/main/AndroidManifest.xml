@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.hrapp.agent"
-    android:versionCode="3"
+    android:versionCode="4"
     android:versionName="1.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -11,6 +11,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Required on API 34+ to use camera/mic from a background foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Auto-start agent on device reboot so pairing persists without opening the app. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- QUERY_ALL_PACKAGES: needed to list installed apps (§24). Play Store
          requires a declared use; for direct-APK distribution (ADR-0001) it's fine. -->
@@ -46,11 +51,23 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
-        <!-- Keeps the relay connection alive in the background. -->
+        <!-- Keeps the relay connection alive in the background.
+             camera|microphone types are required on API 34+ to use those
+             hardware resources from a background foreground service. -->
         <service
             android:name=".ConnectionService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync|camera|microphone" />
+
+        <!-- Re-starts the agent after device reboot (RECEIVE_BOOT_COMPLETED). -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Remote touch/keyboard. User enables it by hand in Accessibility settings. -->
         <service

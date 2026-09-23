@@ -139,3 +139,45 @@ uninstall-prompt — all pass end-to-end through the real relay, plus all prior 
 (vertical / modules / streaming). Live in-browser Reticle verification of these two cards was blocked
 by a throttled-tab pairing race this round; the automated suite exercises the same relay path.
 Android capture/enforcement (notification read, HOME-bounce) is device-only as always.
+
+## 2026-09-23 — production architecture: persistent pairing, FG service types, boot receiver, screen capture thread
+
+Full production-readiness pass. All changes compiled to **build 5** APK and deployed to Vercel.
+
+### Changes shipped
+
+**Agent.kt — persistent pairing + reconnect without re-pair**
+- `lastPairingCode` field: retained after PAIR_INIT_RESPONSE, re-delivered to any StatusListener registered after the WS open (fixes the race between `HrappApplication.onCreate()` starting WS and `MainActivity.onResume()` registering the listener — the root cause of pairing code not appearing).
+- `onOpen()`: if `device_id` stored in SharedPreferences, sends `AUTH_REQUEST` directly (no re-pair on reconnect). Falls back to `sendPairInit()` only on AUTH_RESPONSE FAIL.
+
+**relay-server/server.js — persistent paired-devices**
+- Writes `paired-devices.json` after every new pairing (`savePaired()`).
+- Loads it on startup — paired devices survive relay restarts.
+
+**controller/public/app.js — session persistence + auto-reconnect**
+- `loadSession` / `saveSession` / `clearSession` in localStorage.
+- On WS open: tries AUTH_REQUEST with stored token before showing pairing UI.
+- On WS close: auto-reconnects after 3 s.
+- On AUTH fail: clears session, shows "Session expired — please re-pair."
+
+**AndroidManifest.xml — new permissions + BootReceiver**
+- Added `FOREGROUND_SERVICE_CAMERA`, `FOREGROUND_SERVICE_MICROPHONE`, `RECEIVE_BOOT_COMPLETED`.
+- BootReceiver declared with BOOT_COMPLETED + MY_PACKAGE_REPLACED.
+
+**ConnectionService.kt — API 34+ foreground service types**
+- `startForeground()` now passes `TYPE_DATA_SYNC | TYPE_CAMERA | TYPE_MICROPHONE` on API 29+.
+- Required on Android 14+ (API 34) to access camera/mic from a background foreground service.
+
+**BootReceiver.kt (new)**
+- Handles BOOT_COMPLETED and MY_PACKAGE_REPLACED.
+- Starts ConnectionService (relay reconnect only — does NOT auto-start camera/mic/screen).
+
+**ScreenCaptureService.kt — JPEG compression off main thread**
+- Added `HandlerThread("hrapp-screen")` + `Handler(thread.looper)`.
+- Passed `captureHandler` to `setOnImageAvailableListener()` (was `null` = main looper).
+- `onDestroy()` calls `captureThread?.quitSafely()`.
+- Eliminates UI jank from JPEG compression blocking the main thread during screen capture.
+
+### Vercel deployment
+- **Production URL:** https://vercel-deploy-phi-flame-42.vercel.app
+- APK download: https://vercel-deploy-phi-flame-42.vercel.app/hrapp-remote.apk
