@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -81,17 +82,30 @@ class MainActivity : Activity(), Agent.StatusListener {
 
     override fun onResume() {
         super.onResume()
+        Log.d("HRAPP", "MainActivity.onResume — registering StatusListener")
         Agent.setStatusListener(this)
     }
 
     override fun onPause() {
         super.onPause()
+        Log.d("HRAPP", "MainActivity.onPause — clearing StatusListener")
         Agent.setStatusListener(null)
     }
 
-    override fun onStatus(text: String) = runOnUiThread { statusText.text = text }
-    override fun onPairingCode(code: String) = runOnUiThread { pairingCodeText.text = code }
+    override fun onStatus(text: String) = runOnUiThread {
+        Log.d("HRAPP", "onStatus: $text")
+        statusText.text = text
+    }
+    override fun onPairingCode(code: String) = runOnUiThread {
+        Log.d("HRAPP", "onPairingCode: '$code' (len=${code.length})")
+        pairingCodeText.text = code
+    }
     override fun onLog(line: String) = runOnUiThread {
+        Log.d("HRAPP", "onLog: $line")
         logText.text = "$line\n${logText.text}".take(2000)
+    }
+    override fun onStateChange(state: ConnectionState) = runOnUiThread {
+        Log.d("HRAPP", "onStateChange: $state")
+        title = "HRAPP [${state.name}]"
     }
 }

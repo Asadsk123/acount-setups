@@ -3,19 +3,24 @@ package com.hrapp.agent
 import android.app.Application
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
 
-/**
- * Singleton connection + message router, shared by MainActivity and the
- * modules that don't have their own Activity (RemoteControlService,
- * LockAdminReceiver). Lives for the process lifetime via HrappApplication,
- * so remote control keeps working even when MainActivity isn't foregrounded.
- *
- * ponytail: a `when` dispatch instead of a registry/plugin system — five
- * modules is small enough that a registry would be the premature abstraction,
- * not the simplification. Revisit if module count grows past ~10.
- */
+private const val TAG = "HRAPP"
+
+enum class ConnectionState {
+    DISCONNECTED,
+    CONNECTING,
+    WS_OPEN,
+    AUTHENTICATING,
+    AUTHENTICATED,    // AUTH_OK but no pairing code yet / re-auth path
+    PAIRING_REQUIRED, // waiting for user to enter code in controller
+    PAIRED,           // controller has entered code, commands can flow
+    RECONNECTING,
+    STOPPING
+}
+
 object Agent {
     // Relay address is user-configurable (phone + PC must reach each other).
     // Stored in prefs so it survives restarts; defaults to a LAN placeholder
@@ -32,9 +37,11 @@ object Agent {
         fun onStatus(text: String)
         fun onPairingCode(code: String)
         fun onLog(line: String)
+        fun onStateChange(state: ConnectionState) {}  // optional override
     }
 
     private var ws: MiniWebSocket? = null
+    @Volatile private var connectGen = 0
     private val mainHandler = Handler(Looper.getMainLooper())
     var deviceId: String? = null
         private set
@@ -45,16 +52,31 @@ object Agent {
     private var lastPairingCode: String? = null
     private lateinit var appContext: Application
 
+    @Volatile var state: ConnectionState = ConnectionState.DISCONNECTED
+        private set
+
+    private fun transition(next: ConnectionState) {
+        val prev = state
+        state = next
+        Log.d(TAG, "STATE: $prev → $next [gen=$connectGen]")
+        mainHandler.post { statusListener?.onStateChange(next) }
+    }
+
     fun init(app: Application) {
+        Log.d(TAG, "init: called, already=${::appContext.isInitialized}")
         if (::appContext.isInitialized) return
         appContext = app
         connect()
     }
 
     fun setStatusListener(listener: StatusListener?) {
+        Log.d(TAG, "setStatusListener: listener=${listener != null}, lastPairingCode=$lastPairingCode")
         statusListener = listener
         // Re-deliver any code that arrived before this listener was registered.
-        if (listener != null) lastPairingCode?.let { mainHandler.post { listener.onPairingCode(it) } }
+        if (listener != null) lastPairingCode?.let {
+            Log.d(TAG, "setStatusListener: re-delivering lastPairingCode=$it")
+            mainHandler.post { listener.onPairingCode(it) }
+        }
     }
 
     fun getRelayHost(): String =
@@ -62,11 +84,10 @@ object Agent {
 
     /** Called from the UI when the user enters/changes the PC's IP. Reconnects. */
     fun setRelayHost(host: String) {
-        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).apply()
-        ws?.close()
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).commit()
         deviceId = null
         lastPairingCode = null
-        connect()
+        connect() // connect() closes old ws internally
     }
 
     /** Parse whatever the user typed into (tls, host, port). Accepts a bare IP,
@@ -85,35 +106,55 @@ object Agent {
     }
 
     private fun connect() {
+        val oldWs = ws
+        val gen = ++connectGen
         val (tls, host, port) = parseTarget(getRelayHost())
+        Log.d(TAG, "connect: gen=$gen host=$host port=$port tls=$tls")
+        transition(ConnectionState.CONNECTING)
         status("connecting to $host…")
-        ws = MiniWebSocket(host, port, "/", object : MiniWebSocket.Listener {
+        val newWs = MiniWebSocket(host, port, "/", object : MiniWebSocket.Listener {
             override fun onOpen() {
+                Log.d(TAG, "onOpen: gen=$gen WS_OPEN — checking stored device_id")
+                if (gen != connectGen) { Log.w(TAG, "onOpen: stale gen=$gen, skip"); return }
+                transition(ConnectionState.WS_OPEN)
                 log("[PAIR] WS_OPEN")
-                // If we already have a stable device_id the relay may know us —
-                // try AUTH directly to skip the pairing-code screen on reconnect.
-                // AUTH_RESPONSE FAIL → sendPairInit() is called as fallback.
                 val stored = appContext.getSharedPreferences(PREF, 0).getString("device_id", null)
+                Log.d(TAG, "onOpen: stored device_id=${stored?.take(8)}")
                 if (stored != null) {
                     deviceId = stored
+                    Log.d(TAG, "onOpen: re-auth path — sending AUTH_REQUEST")
+                    transition(ConnectionState.AUTHENTICATING)
                     log("[PAIR] have device_id — attempting re-auth")
                     sendAuth()
                 } else {
+                    Log.d(TAG, "onOpen: new-pair path — sending PAIR_INIT")
                     sendPairInit()
                 }
             }
             override fun onMessage(text: String) {
+                Log.d(TAG, "onMessage: gen=$gen ${text.take(120)}")
+                if (gen != connectGen) return // stale connection, discard
                 mainHandler.post { handleMessage(text) }
             }
             override fun onFailure(t: Throwable) {
-                status("relay unreachable: ${t.message}")
+                Log.e(TAG, "onFailure: gen=$gen ${t.javaClass.simpleName}: ${t.message}")
+                if (gen != connectGen) return // stale, don't cascade
+                transition(ConnectionState.RECONNECTING)
+                status("relay unreachable ($host:$port) — ${t.javaClass.simpleName}")
                 log("connection failed — retrying in 5s")
-                mainHandler.postDelayed({ connect() }, 5000)
+                mainHandler.postDelayed({ if (gen == connectGen) connect() }, 5000)
             }
             override fun onClosed() {
-                status("disconnected")
+                Log.d(TAG, "onClosed: gen=$gen")
+                if (gen != connectGen) return // stale socket — our close() call, ignore
+                transition(ConnectionState.RECONNECTING)
+                status("disconnected — reconnecting in 5s")
+                mainHandler.postDelayed({ if (gen == connectGen) connect() }, 5000)
             }
-        }, tls).also { it.connectAsync() }
+        }, tls)
+        ws = newWs
+        oldWs?.close() // close AFTER ws is reassigned so stale onFailure is ignored
+        newWs.connectAsync()
     }
 
     fun send(json: JSONObject) {
@@ -145,14 +186,17 @@ object Agent {
 
     private fun sendPairInit() {
         deviceId = stableDeviceId()
+        Log.d(TAG, "sendPairInit: device_id=${deviceId?.take(8)}")
+        transition(ConnectionState.AUTHENTICATING)
         send(JSONObject().apply {
             put("message_type", "PAIR_INIT")
             put("request_id", UUID.randomUUID().toString())
-            put("device_id", deviceId) // relay reuses this id, so pairing survives reconnects
+            put("device_id", deviceId)
         })
     }
 
     private fun sendAuth() {
+        Log.d(TAG, "sendAuth: device_id=${deviceId?.take(8)}")
         send(JSONObject().apply {
             put("message_type", "AUTH_REQUEST")
             put("device_id", deviceId)
@@ -167,22 +211,28 @@ object Agent {
                 val payload = msg.getJSONObject("payload")
                 deviceId = payload.getString("device_id")
                 val code = payload.getString("pairing_code")
+                Log.d(TAG, "PAIR_INIT_RESPONSE: device_id=${deviceId?.take(8)} code=$code")
                 lastPairingCode = code
-                mainHandler.post { statusListener?.onPairingCode(code) }
+                transition(ConnectionState.PAIRING_REQUIRED)
+                mainHandler.post {
+                    Log.d(TAG, "PAIR_INIT_RESPONSE: posting onPairingCode($code) listener=${statusListener != null}")
+                    statusListener?.onPairingCode(code)
+                }
                 log("pairing code issued: $code")
                 sendAuth()
             }
             "AUTH_RESPONSE" -> {
                 if (msg.optString("status") == "OK") {
-                    log("[PAIR] AUTH_OK — ready")
-                    lastPairingCode = null // clear stale code from display on success
-                    mainHandler.post { statusListener?.onPairingCode("") }
-                    status("paired — waiting for commands")
+                    Log.d(TAG, "AUTH_RESPONSE: OK — agent registered, code kept visible until controller pairs")
+                    log("[PAIR] AUTH_OK — agent registered with relay, enter code on controller")
+                    transition(ConnectionState.AUTHENTICATED)
+                    status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
                 } else {
-                    // Relay doesn't recognise this device (e.g. relay cold-start before
-                    // paired-devices.json was introduced, or device_id rotated).
+                    Log.d(TAG, "AUTH_RESPONSE: FAIL — falling back to PAIR_INIT")
                     log("[PAIR] AUTH failed — sending PAIR_INIT")
+                    lastPairingCode = null
+                    transition(ConnectionState.WS_OPEN)
                     sendPairInit()
                 }
             }
