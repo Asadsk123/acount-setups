@@ -7,7 +7,8 @@
 import { WebSocketServer } from 'ws';
 import { randomUUID, createHmac, randomBytes, randomInt } from 'crypto';
 import { createServer } from 'http';
-import { readFile, writeFile, readFileSync, existsSync } from 'fs';
+import { writeFile, readFileSync, existsSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 
 const MAX_PAIR_ATTEMPTS = 5; // per connection, before we stop accepting codes
@@ -44,6 +45,10 @@ const httpServer = createServer(async (req, res) => {
   if (url === '/audit') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify(audit.slice(0, 50)));
+  }
+  if (url === '/stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ conns: statsConns, msgs: statsMsgs, paired: pairedDevices.size, lastMsgTypes }));
   }
   if (url === '/hrapp-remote.apk') return serveFile(res, APK_PATH, 'application/vnd.android.package-archive', 'attachment; filename="hrapp-remote.apk"');
   if (url === '/download/agent/help') return serveFile(res, join(HERE, 'download-help.html'), 'text/html');
@@ -103,6 +108,8 @@ const pendingPairings = new Map();
 const pairedDevices = new Map();
 // audit log, newest first, capped
 const audit = [];
+let statsConns = 0, statsMsgs = 0;
+const lastMsgTypes = []; // ring buffer of last 20 message types received
 
 // Load persisted pairings (must come after pairedDevices is defined above).
 if (existsSync(PAIRED_FILE)) {
@@ -137,12 +144,18 @@ function verifySessionToken(deviceId, secret, token) {
 }
 
 wss.on('connection', (ws) => {
+  statsConns++;
   let boundDeviceId = null;
   let boundRole = null; // 'agent' | 'controller' — set only after successful AUTH_REQUEST
   let pairAttempts = 0; // failed PAIR_REQUEST tries on this connection (brute-force guard)
 
+  ws.on('error', (err) => { console.error('[ws error]', err.message); });
+
   ws.on('message', (raw) => {
+    statsMsgs++;
     let msg;
+    // Temp debug: track last 20 message types to diagnose zero-audit issue
+    try { const t = JSON.parse(raw.toString()).message_type; lastMsgTypes.unshift(t); if (lastMsgTypes.length > 20) lastMsgTypes.pop(); } catch {}
     try {
       msg = JSON.parse(raw.toString());
     } catch {
@@ -162,7 +175,7 @@ wss.on('connection', (ws) => {
         savePaired();
         pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 5 * 60_000 });
         send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code } });
-        logAudit({ type: 'PAIR_INIT', deviceId, detail: 'pairing code issued' });
+        logAudit({ type: 'PAIR_INIT', deviceId });
         break;
       }
 
