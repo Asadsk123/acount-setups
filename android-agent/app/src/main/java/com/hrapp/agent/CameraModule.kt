@@ -68,7 +68,12 @@ object CameraModule {
                         lastFrameAt = now
                         val buf = image.planes[0].buffer
                         val bytes = ByteArray(buf.remaining()); buf.get(bytes)
-                        Agent.sendFrame("CAMERA_FRAME", "image/jpeg", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                        // Bounded queue — drops oldest frame if network is slow (backpressure)
+                        StreamSessionManager.cameraQueue.offer {
+                            Agent.sendFrame("CAMERA_FRAME", "image/jpeg", b64)
+                        }
+                        StreamSessionManager.cameraQueue.drain()
                     }
                 } finally { image.close() }
             }, bgHandler)

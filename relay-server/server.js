@@ -111,6 +111,24 @@ const audit = [];
 let statsConns = 0, statsMsgs = 0;
 const lastMsgTypes = []; // ring buffer of last 20 message types received
 
+// IP-level connection rate limiter — max 20 connections per IP per 60s window.
+// Prevents relay resource exhaustion from a single source.
+const ipConnCounts = new Map(); // ip -> { count, windowStart }
+const IP_MAX_CONNS = 20, IP_WINDOW_MS = 60_000;
+function ipAllowed(ip) {
+  const now = Date.now();
+  const entry = ipConnCounts.get(ip) || { count: 0, windowStart: now };
+  if (now - entry.windowStart > IP_WINDOW_MS) { entry.count = 0; entry.windowStart = now; }
+  entry.count++;
+  ipConnCounts.set(ip, entry);
+  return entry.count <= IP_MAX_CONNS;
+}
+// Cleanup old IP entries every 5 min to avoid unbounded growth
+setInterval(() => {
+  const cutoff = Date.now() - IP_WINDOW_MS * 2;
+  for (const [ip, e] of ipConnCounts) if (e.windowStart < cutoff) ipConnCounts.delete(ip);
+}, 5 * 60_000);
+
 // Load persisted pairings (must come after pairedDevices is defined above).
 if (existsSync(PAIRED_FILE)) {
   try {
@@ -143,7 +161,13 @@ function verifySessionToken(deviceId, secret, token) {
   return sig === expected;
 }
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  if (!ipAllowed(ip)) {
+    console.warn(`[rate-limit] rejected conn from ${ip}`);
+    ws.close(1008, 'rate limited');
+    return;
+  }
   statsConns++;
   let boundDeviceId = null;
   let boundRole = null; // 'agent' | 'controller' — set only after successful AUTH_REQUEST
@@ -173,7 +197,7 @@ wss.on('connection', (ws) => {
         // to claim the pairing code first.
         pairedDevices.set(deviceId, secret);
         savePaired();
-        pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 5 * 60_000 });
+        pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 10 * 60_000 }); // 10 min per PAIR-002
         send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code } });
         logAudit({ type: 'PAIR_INIT', deviceId });
         break;

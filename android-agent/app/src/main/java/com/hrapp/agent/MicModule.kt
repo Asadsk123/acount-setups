@@ -53,7 +53,12 @@ object MicModule {
                         bytes[i * 2] = (buf[i].toInt() and 0xFF).toByte()
                         bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte()
                     }
-                    Agent.sendMicChunk(Base64.encodeToString(bytes, Base64.NO_WRAP), SAMPLE_RATE)
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    // Bounded mic queue — 10 chunks max (bounded latency)
+                    StreamSessionManager.micQueue.offer {
+                        Agent.sendMicChunk(b64, SAMPLE_RATE)
+                    }
+                    StreamSessionManager.micQueue.drain()
                 }
             }
             record.stop(); record.release()

