@@ -58,6 +58,7 @@ Last updated: 2026-09-28
 | STREAM-006 | Backpressure / drop-oldest | BoundedFrameQueue.kt (camera=3, mic=10) | Code review | Drop-oldest logic implemented; queue depth NOT measured under load | DESIGN-VERIFIED | Real frame drop behavior NOT VERIFIED |
 | STREAM-007 | Stream failure isolation | StreamSessionManager.kt try/catch per stream | Code review | Exception isolation in code; cross-stream failure NOT tested | DESIGN-VERIFIED | Failure isolation NOT VERIFIED |
 | STREAM-008 | H.264 encoding | NOT IMPLEMENTED | n/a | Currently JPEG ~2fps from Camera2 JPEG surface | NOT IMPLEMENTED | H.264 requires MediaCodec surface encoder; separate work item |
+| STREAM-009 | Binary WebSocket frames | MiniWebSocket.sendBinary + Agent.sendFrameBinary | test_binary_frames.js (4 checks) | camera routed, mic routed, unauth rejected, wrong-id rejected — all PASS | PASS(relay) | Real device binary frame test NOT VERIFIED |
 
 ---
 

@@ -245,3 +245,35 @@ Key statuses:
 - All media streams: PASS(relay) / NOT VERIFIED on device
 
 ### versionCode 12→13, versionName 1.12→1.13
+
+## 2026-09-28 — Binary WebSocket media frames (v14)
+
+Camera and mic now send raw binary WebSocket frames instead of JSON+base64.
+
+### Why
+base64 adds ~33% overhead. A 50KB JPEG previously required ~68KB on the wire.
+Binary frames: 37-byte header + raw JPEG = ~50KB. Same for PCM audio.
+
+### Binary frame protocol
+```
+Byte 0:     frame_type (0x01=CAMERA, 0x02=MIC, 0x03=SCREEN)
+Bytes 1-36: device_id as 36-byte ASCII (UUID with dashes)
+[For MIC only] Bytes 37-40: sample_rate as 4-byte big-endian uint32
+Bytes 37+:  raw media payload (JPEG bytes or 16-bit PCM LE)
+```
+
+### Changes
+- `MiniWebSocket.kt`: `sendBinary(ByteArray)` + `onBinary()` callback + shared `sendFrame(opcode, payload)`
+- `Agent.kt`: `sendFrameBinary(type, sampleRate, payload)` builds the header
+- `CameraModule.kt`: sends raw JPEG bytes via `sendFrameBinary` (no Base64)
+- `MicModule.kt`: sends raw PCM bytes via `sendFrameBinary` (no Base64)
+- `relay-server/server.js`: `(raw, isBinary)` handler routes binary frames; validates auth + device_id
+- `controller/public/app.js`: `binaryType='arraybuffer'`, `routeBinary()`, `onFrameBinary()` uses Blob+createObjectURL, `onMicBinary()` reads sample_rate from header
+- `test_binary_frames.js`: 4 checks — camera routed, mic routed, unauthenticated rejected, wrong device_id rejected — all PASS
+
+### Regression
+vertical_slice PASS, reconnect PASS, authz PASS, binary_frames PASS (4 suites)
+
+### Status
+PASS(relay) — not yet verified on POCO X7 (TASK-01 still OPEN)
+versionCode 13→14, versionName 1.13→1.14
