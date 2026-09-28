@@ -95,6 +95,23 @@
             android:layout_height="wrap_content"
             android:text="Enable remote lock (Device Admin)" />
 
+        <!-- Diagnostic identity panel (NET-002 requirement) -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Identity / Network Diagnostics"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/diagText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:fontFamily="monospace"
+            android:textSize="11sp"
+            android:text="loading…" />
+
         <TextView
             android:id="@+id/logText"
             android:layout_width="match_parent"

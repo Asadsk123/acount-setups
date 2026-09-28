@@ -6,6 +6,8 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.widget.Button
@@ -32,6 +34,11 @@ class MainActivity : Activity(), Agent.StatusListener {
     private lateinit var pairingCodeText: TextView
     private lateinit var logText: TextView
     private lateinit var relayHost: EditText
+    private lateinit var diagText: TextView
+    private val diagHandler = Handler(Looper.getMainLooper())
+    private val diagRunnable = object : Runnable {
+        override fun run() { refreshDiag(); diagHandler.postDelayed(this, 5_000) }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,6 +46,7 @@ class MainActivity : Activity(), Agent.StatusListener {
         statusText = findViewById(R.id.statusText)
         pairingCodeText = findViewById(R.id.pairingCodeText)
         logText = findViewById(R.id.logText)
+        diagText = findViewById(R.id.diagText)
         relayHost = findViewById(R.id.relayHost)
         relayHost.setText(Agent.getRelayHost())
 
@@ -120,12 +128,21 @@ class MainActivity : Activity(), Agent.StatusListener {
         super.onResume()
         Log.d("HRAPP", "MainActivity.onResume — registering StatusListener")
         Agent.setStatusListener(this)
+        diagHandler.post(diagRunnable) // start periodic diagnostic refresh
     }
 
     override fun onPause() {
         super.onPause()
         Log.d("HRAPP", "MainActivity.onPause — clearing StatusListener")
         Agent.setStatusListener(null)
+        diagHandler.removeCallbacks(diagRunnable)
+    }
+
+    private fun refreshDiag() {
+        val snap = NetworkDiagnostics.snapshot(this)
+        diagText.text = NetworkDiagnostics.format(snap)
+        // Log once so logcat shows the full diagnostic block (NET-002 evidence)
+        Log.d("HRAPP", "DIAG device_id=${snap.deviceId} transport=${snap.transport} ip=${snap.currentIp} relay=${snap.relayEndpoint} state=${snap.connectionState}")
     }
 
     override fun onStatus(text: String) = runOnUiThread {
@@ -143,5 +160,6 @@ class MainActivity : Activity(), Agent.StatusListener {
     override fun onStateChange(state: ConnectionState) = runOnUiThread {
         Log.d("HRAPP", "onStateChange: $state")
         title = "HRAPP [${state.name}]"
+        refreshDiag() // update diag panel immediately on state change
     }
 }

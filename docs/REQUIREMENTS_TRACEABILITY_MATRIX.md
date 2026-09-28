@@ -17,7 +17,7 @@ Last updated: 2026-09-28
 | ID | Requirement | Module/Code | Test performed | Evidence | Status | Remaining risk |
 |----|-------------|-------------|----------------|----------|--------|----------------|
 | NET-001 | Remove Wi-Fi IP dependency — WSS + stable relay domain | `parseTarget()` in Agent.kt:106 | Manual: relay running on LAN IP | LAN connectivity verified in prior sessions | PASS(relay) | Public WSS relay not deployed — user must deploy Railway/Cloudflare Tunnel |
-| NET-002 | Stable DEVICE_ID survives restarts/updates | `stableDeviceId()` Agent.kt:190 + SharedPreferences `agent_config` | test_reconnect.js | Relay test PASS; POCO X7 reconnect NOT VERIFIED | PASS(relay) / NOT VERIFIED device | POCO X7 reboot/update test pending TASK-01 |
+| NET-002 | Stable DEVICE_ID survives restarts/updates | `stableDeviceId()` Agent.kt + SharedPreferences `agent_config` | test_reconnect.js | Relay test PASS; POCO X7 evidence NOT VERIFIED — see NET002_IP_IDENTITY_ANALYSIS.md | NOT VERIFIED (real device) | 8 real-device tests A–H required; "stable IP" is impossible on Android — correct architecture uses UUID+auth, not IP. Keystore upgrade path documented. |
 | NET-003 | Global connectivity (phone works on any network) | `parseTarget()` accepts `wss://` schema | n/a — deployment gate | No public relay deployed yet | NOT VERIFIED | Requires Railway/Cloudflare Tunnel deployment by user |
 
 ---

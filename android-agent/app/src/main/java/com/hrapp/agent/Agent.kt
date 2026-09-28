@@ -130,10 +130,11 @@ object Agent {
                 transition(ConnectionState.WS_OPEN)
                 log("[PAIR] WS_OPEN")
                 val stored = appContext.getSharedPreferences(PREF, 0).getString("device_id", null)
-                Log.d(TAG, "onOpen: stored device_id=${stored?.take(8)}")
+                // Full UUID logged for NET-002 real-device evidence (TASK-01 checklist items A-H)
+                Log.i(TAG, "NET002 DEVICE_ID=${stored ?: "(null — fresh install)"}")
                 if (stored != null) {
                     deviceId = stored
-                    Log.d(TAG, "onOpen: re-auth path — sending AUTH_REQUEST")
+                    Log.d(TAG, "onOpen: re-auth path — sending AUTH_REQUEST device_id=$stored")
                     transition(ConnectionState.AUTHENTICATING)
                     log("[PAIR] have device_id — attempting re-auth")
                     sendAuth()
@@ -193,6 +194,9 @@ object Agent {
         if (id == null) {
             id = UUID.randomUUID().toString()
             prefs.edit().putString("device_id", id).apply()
+            Log.i(TAG, "NET002 DEVICE_ID generated fresh: $id")
+        } else {
+            Log.i(TAG, "NET002 DEVICE_ID loaded from storage: $id")
         }
         return id
     }
