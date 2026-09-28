@@ -1,6 +1,7 @@
 package com.hrapp.agent
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Intent
@@ -41,6 +42,36 @@ class MainActivity : Activity(), Agent.StatusListener {
         relayHost = findViewById(R.id.relayHost)
         relayHost.setText(Agent.getRelayHost())
 
+        // SETUP-001: show T&C on first run; block until accepted.
+        if (SetupManager.needsTerms(this)) {
+            showTermsDialog()
+            return
+        }
+
+        startMainFlow()
+    }
+
+    private fun showTermsDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Terms & Conditions")
+            .setMessage(
+                "HRAPP Remote Monitor\n\n" +
+                "By continuing you confirm:\n" +
+                "• You own or have explicit written permission to monitor this device.\n" +
+                "• The device user has been informed this app is installed.\n" +
+                "• You will not use this app for covert surveillance.\n\n" +
+                "Misuse is illegal and prohibited."
+            )
+            .setCancelable(false)
+            .setPositiveButton("I Agree") { _, _ ->
+                SetupManager.acceptTerms(this)
+                startMainFlow()
+            }
+            .setNegativeButton("Decline") { _, _ -> finish() }
+            .show()
+    }
+
+    private fun startMainFlow() {
         // Keep the relay connection alive in the background (foreground service).
         ConnectionService.start(this)
 
@@ -53,8 +84,12 @@ class MainActivity : Activity(), Agent.StatusListener {
         if (android.os.Build.VERSION.SDK_INT >= 33) perms.add("android.permission.POST_NOTIFICATIONS")
         requestPermissions(perms.toTypedArray(), 1000)
 
+        // Mark relay configured when user taps Connect so SetupManager advances.
         findViewById<Button>(R.id.btnConnect).setOnClickListener {
-            Agent.setRelayHost(relayHost.text.toString())
+            val host = relayHost.text.toString()
+            Agent.setRelayHost(host)
+            SetupManager.markRelayConfigured(this)
+            if (!SetupManager.isComplete(this)) SetupManager.markComplete(this)
         }
         findViewById<Button>(R.id.btnMedia).setOnClickListener {
             requestPermissions(arrayOf(
@@ -78,6 +113,7 @@ class MainActivity : Activity(), Agent.StatusListener {
             }
             startActivity(intent)
         }
+
     }
 
     override fun onResume() {
