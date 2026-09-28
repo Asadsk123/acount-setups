@@ -54,6 +54,8 @@ object Agent {
 
     @Volatile var state: ConnectionState = ConnectionState.DISCONNECTED
         private set
+    // Exponential backoff: 2s, 4s, 8s, 16s, 32s, cap 60s + jitter
+    private var retryDelayMs = 2_000L
 
     private fun transition(next: ConnectionState) {
         val prev = state
@@ -61,6 +63,15 @@ object Agent {
         Log.d(TAG, "STATE: $prev → $next [gen=$connectGen]")
         mainHandler.post { statusListener?.onStateChange(next) }
     }
+
+    private fun scheduleReconnect(gen: Int) {
+        val delay = retryDelayMs + (Math.random() * 1000).toLong() // jitter ±1s
+        retryDelayMs = minOf(retryDelayMs * 2, 60_000L)
+        Log.d(TAG, "reconnect scheduled: gen=$gen delay=${delay}ms (next=${retryDelayMs}ms)")
+        mainHandler.postDelayed({ if (gen == connectGen) connect() }, delay)
+    }
+
+    private fun resetBackoff() { retryDelayMs = 2_000L }
 
     fun init(app: Application) {
         Log.d(TAG, "init: called, already=${::appContext.isInitialized}")
@@ -140,16 +151,18 @@ object Agent {
                 Log.e(TAG, "onFailure: gen=$gen ${t.javaClass.simpleName}: ${t.message}")
                 if (gen != connectGen) return // stale, don't cascade
                 transition(ConnectionState.RECONNECTING)
-                status("relay unreachable ($host:$port) — ${t.javaClass.simpleName}")
-                log("connection failed — retrying in 5s")
-                mainHandler.postDelayed({ if (gen == connectGen) connect() }, 5000)
+                val delay = retryDelayMs
+                status("relay unreachable ($host:$port) — ${t.javaClass.simpleName} (retry ${delay/1000}s)")
+                log("connection failed — retrying in ${delay/1000}s")
+                scheduleReconnect(gen)
             }
             override fun onClosed() {
                 Log.d(TAG, "onClosed: gen=$gen")
                 if (gen != connectGen) return // stale socket — our close() call, ignore
                 transition(ConnectionState.RECONNECTING)
-                status("disconnected — reconnecting in 5s")
-                mainHandler.postDelayed({ if (gen == connectGen) connect() }, 5000)
+                val delay = retryDelayMs
+                status("disconnected — reconnecting in ${delay/1000}s")
+                scheduleReconnect(gen)
             }
         }, tls)
         ws = newWs
@@ -225,6 +238,7 @@ object Agent {
                 if (msg.optString("status") == "OK") {
                     Log.d(TAG, "AUTH_RESPONSE: OK — agent registered, code kept visible until controller pairs")
                     log("[PAIR] AUTH_OK — agent registered with relay, enter code on controller")
+                    resetBackoff() // successful connection — reset exponential backoff
                     transition(ConnectionState.AUTHENTICATED)
                     status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
