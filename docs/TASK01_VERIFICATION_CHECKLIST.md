@@ -162,6 +162,68 @@ Force connection failure (relay stopped) and time the retries:
 
 ---
 
+## E2. NET-002 DEVICE_ID stability (run after B1 confirmed)
+
+Logcat filter: `adb logcat -s HRAPP | grep NET002`
+
+### E2-A. Record initial DEVICE_ID
+1. Open app, note the DEVICE_ID shown in the diagnostic panel on screen
+2. Also from logcat: `NET002 DEVICE_ID=<uuid>` or `NET002 DEVICE_ID generated fresh: <uuid>`
+3. **Record this UUID. Every test below must show the same UUID.**
+4. **Status:** NOT VERIFIED
+
+### E2-B. App restart
+1. Force-stop: `adb shell am force-stop com.hrapp.agent`
+2. Reopen app
+3. Logcat: `NET002 DEVICE_ID=<uuid>` must match E2-A
+4. **Status:** NOT VERIFIED
+
+### E2-C. Phone reboot
+1. `adb reboot` — wait for boot complete
+2. Open app
+3. Logcat: `NET002 DEVICE_ID=<uuid>` must match E2-A
+4. **Status:** NOT VERIFIED
+
+### E2-D. Wi-Fi toggle
+1. Turn Wi-Fi off (Settings → Wi-Fi → off) — wait for disconnect in logcat
+2. Turn Wi-Fi on — wait for reconnect
+3. Logcat: `NET002 DEVICE_ID=<uuid>` must match E2-A
+4. Note: `current IP` in diagnostic panel **may change** — that is expected and correct
+5. **Status:** NOT VERIFIED
+
+### E2-E. Network change (if available: Wi-Fi → mobile or hotspot switch)
+1. Disconnect from Wi-Fi, use mobile data (or switch hotspot)
+2. Open app — wait for reconnect
+3. Logcat: `NET002 DEVICE_ID=<uuid>` must match E2-A
+4. Diagnostic panel: `transport` changes, `current IP` changes — DEVICE_ID stays same
+5. **Status:** NOT VERIFIED
+
+### E2-F. APK update (adb install -r)
+1. `adb install -r hrapp-remote.apk`  (v15 over existing)
+2. Open app
+3. Logcat: `NET002 DEVICE_ID loaded from storage: <uuid>` — must match E2-A
+4. Must NOT see `NET002 DEVICE_ID generated fresh` — that would mean identity was lost
+5. **Status:** NOT VERIFIED
+
+### E2-G. Uninstall + reinstall (identity reset)
+1. `adb uninstall com.hrapp.agent`
+2. `adb install hrapp-remote.apk`
+3. Open app
+4. Logcat: `NET002 DEVICE_ID generated fresh: <new-uuid>` — MUST be a DIFFERENT UUID from E2-A
+5. **Status:** NOT VERIFIED
+
+### E2-H. Network change mid-session (pairing survival)
+1. Ensure paired (AUTHENTICATED state)
+2. Record DEVICE_ID and current IP from diagnostic panel
+3. Toggle Wi-Fi off+on (IP may change)
+4. Wait for reconnect in logcat
+5. Logcat: `NET002 DEVICE_ID=<uuid>` must match recorded UUID
+6. Relay must re-auth without requiring new pairing code
+7. Controller must still be able to send commands (e.g. PLAY_SOUND)
+8. **Status:** NOT VERIFIED
+
+---
+
 ## F. Media streams (after TASK-01 base verified)
 
 > Run only after B+C verified.

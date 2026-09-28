@@ -277,3 +277,45 @@ vertical_slice PASS, reconnect PASS, authz PASS, binary_frames PASS (4 suites)
 ### Status
 PASS(relay) — not yet verified on POCO X7 (TASK-01 still OPEN)
 versionCode 13→14, versionName 1.13→1.14
+
+## 2026-09-28 — NET-002 diagnostic screen + IP/identity requirement analysis (v15)
+
+### IP requirement analysis (`docs/NET002_IP_IDENTITY_ANALYSIS.md`)
+- **Original requirement:** stable device identity, not relying on dynamic network IP
+- **"Permanent Wi-Fi/carrier IP":** IMPOSSIBLE on Android — DHCP leases expire, mobile IPs are CGNAT
+- **Correct interpretation:** UUID in app-private SharedPreferences, used as identity in relay AUTH
+- **Current implementation:** `stableDeviceId()` → `UUID.randomUUID()` stored in SharedPreferences `agent_config/device_id`
+- Identity is by DEVICE_ID+auth, not IP — when network changes, agent reconnects from new IP and re-authenticates with same DEVICE_ID; pairing is preserved
+- **Keystore:** not implemented — SharedPreferences sufficient for sideloaded dev build; hardware-backed Keystore is documented upgrade path
+
+### Diagnostic screen (`NetworkDiagnostics.kt`)
+Added to app main screen, refreshes every 5 seconds + on state change:
+```
+── DEVICE IDENTITY (stable) ─────────────
+DEVICE_ID : 6413f8db-6aa0-46f5-a1e8-6eedd911e915
+  (never changes with network; resets only on
+   uninstall/data-clear — NOT the Wi-Fi IP)
+
+── NETWORK (dynamic — changes with IP/network) ──
+transport  : Wi-Fi
+current IP : 192.168.0.105  ← dynamic, DO NOT use as identity
+relay      : 192.168.0.246:8787
+
+── CONNECTION ──────────────────────────
+state      : AUTHENTICATED
+```
+
+### Logcat evidence tags added to Agent.kt
+```
+adb logcat -s HRAPP | grep NET002
+```
+Outputs full DEVICE_ID on every connection:
+- `NET002 DEVICE_ID=<full-uuid>` — from `onOpen()` (loaded from storage)
+- `NET002 DEVICE_ID generated fresh: <uuid>` — only on first install
+- `NET002 DEVICE_ID loaded from storage: <uuid>` — all subsequent launches
+
+### NET-002 real-device tests A–H (all NOT VERIFIED)
+Tests A–H in TASK01_VERIFICATION_CHECKLIST.md section requires POCO X7 evidence.
+Do NOT claim PASS without actual logcat output showing same DEVICE_ID across restarts.
+
+versionCode 14→15, versionName 1.14→1.15
