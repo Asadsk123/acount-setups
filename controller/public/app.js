@@ -34,7 +34,11 @@ function connectWs() {
     }
   };
   ws.onclose = () => { setStatus('relay disconnected', false); setTimeout(connectWs, 3000); };
-  ws.onmessage = (ev) => route(JSON.parse(ev.data));
+  ws.binaryType = 'arraybuffer';
+  ws.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) { routeBinary(ev.data); return; }
+    route(JSON.parse(ev.data));
+  };
 }
 connectWs();
 
@@ -148,17 +152,62 @@ $('textBtn').onclick = () => {
   $('textInput').value = '';
 };
 
+// --- binary frame routing ---
+// Binary envelope: [1 byte type][36 bytes device_id ASCII][payload]
+// For MIC: additional [4 bytes sample_rate BE] before PCM payload
+const BIN_CAMERA = 0x01, BIN_MIC = 0x02, BIN_SCREEN = 0x03;
+function routeBinary(ab) {
+  const buf = new Uint8Array(ab);
+  if (buf.length < 37) return;
+  const frameType = buf[0];
+  // deviceId bytes 1..36 (informational — relay already routed to us)
+  if (frameType === BIN_CAMERA) { onFrameBinary('cameraView', 'cameraStatus', buf.slice(37)); return; }
+  if (frameType === BIN_SCREEN) { onFrameBinary('screenView', 'screenStatus', buf.slice(37)); return; }
+  if (frameType === BIN_MIC)    { onMicBinary(buf); return; }
+}
+
 // --- media streams (screen / camera / mic) ---
 let screenFrames = 0, cameraFrames = 0, micChunks = 0;
+function onFrameBinary(imgId, statusId, jpegBytes) {
+  const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
+  const url = URL.createObjectURL(blob);
+  const img = $(imgId);
+  const old = img.src;
+  img.src = url;
+  if (old.startsWith('blob:')) URL.revokeObjectURL(old);
+  const n = imgId === 'screenView' ? (screenFrames += 1) : (cameraFrames += 1);
+  $(statusId).textContent = `live — ${n} frames`;
+}
 function onFrame(imgId, statusId, p) {
+  // Legacy JSON+base64 path (kept for relay-test compatibility)
   $(imgId).src = `data:${p.mime || 'image/jpeg'};base64,${p.b64}`;
   const n = imgId === 'screenView' ? (screenFrames += 1) : (cameraFrames += 1);
   $(statusId).textContent = `live — ${n} frames`;
 }
 let audioCtx = null;
-function onMicChunk(p) {
+function onMicBinary(buf) {
+  // Binary mic: header 37 bytes + 4 bytes sample_rate BE + PCM bytes
+  if (buf.length < 41) return;
   micChunks += 1;
-  // Decode 16-bit PCM base64 -> Float32, play via WebAudio + drive a level meter.
+  const sampleRate = (buf[37] << 24) | (buf[38] << 16) | (buf[39] << 8) | buf[40];
+  const pcm = buf.slice(41);
+  const samples = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength >> 1);
+  let peak = 0;
+  const f32 = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) { f32[i] = samples[i] / 32768; peak = Math.max(peak, Math.abs(f32[i])); }
+  $('micLevel').style.width = Math.round(peak * 100) + '%';
+  $('micStatus').textContent = `receiving — ${micChunks} chunks`;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const abuf = audioCtx.createBuffer(1, f32.length, sampleRate || 8000);
+    abuf.getChannelData(0).set(f32);
+    const src = audioCtx.createBufferSource();
+    src.buffer = abuf; src.connect(audioCtx.destination); src.start();
+  } catch {}
+}
+function onMicChunk(p) {
+  // Legacy JSON+base64 path (relay test suite uses this; real device uses binary)
+  micChunks += 1;
   const bytes = Uint8Array.from(atob(p.pcm_b64), (c) => c.charCodeAt(0));
   const samples = new Int16Array(bytes.buffer);
   let peak = 0;

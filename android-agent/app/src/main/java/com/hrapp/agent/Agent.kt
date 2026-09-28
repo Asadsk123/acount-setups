@@ -343,12 +343,46 @@ object Agent {
         })
     }
 
-    /** Called by the media modules to push a base64 frame/chunk to the controller. */
+    /** Called by the media modules to push a base64 frame/chunk to the controller.
+     *  sendFrameBinary() is preferred — avoids ~33% base64 overhead. */
     fun sendFrame(type: String, mime: String, b64: String) {
         send(type, JSONObject().apply { put("mime", mime); put("b64", b64) })
     }
     fun sendMicChunk(pcmB64: String, sampleRate: Int) {
         send("MIC_CHUNK", JSONObject().apply { put("pcm_b64", pcmB64); put("sample_rate", sampleRate) })
+    }
+
+    /**
+     * Binary frame protocol — 37-byte header + raw payload:
+     *   [0]     frame_type byte: 0x01=CAMERA_FRAME, 0x02=MIC_CHUNK, 0x03=SCREEN_FRAME
+     *   [1..36] device_id as 36-byte ASCII (UUID with dashes)
+     *   [37..]  raw media bytes (JPEG or PCM)
+     * Relay reads the header, routes to the paired controller socket.
+     * Controller reads the same header format from its WebSocket binary message.
+     */
+    object BinaryFrameType {
+        const val CAMERA: Byte = 0x01
+        const val MIC: Byte = 0x02
+        const val SCREEN: Byte = 0x03
+    }
+
+    fun sendFrameBinary(type: Byte, sampleRate: Int = 0, payload: ByteArray) {
+        val id = deviceId ?: return
+        val idBytes = id.toByteArray(Charsets.US_ASCII) // 36 bytes
+        val header = ByteArray(1 + 36 + if (type == BinaryFrameType.MIC) 4 else 0)
+        header[0] = type
+        System.arraycopy(idBytes, 0, header, 1, 36)
+        if (type == BinaryFrameType.MIC) {
+            // embed sample_rate as 4 bytes big-endian after device_id
+            header[37] = ((sampleRate shr 24) and 0xFF).toByte()
+            header[38] = ((sampleRate shr 16) and 0xFF).toByte()
+            header[39] = ((sampleRate shr 8) and 0xFF).toByte()
+            header[40] = (sampleRate and 0xFF).toByte()
+        }
+        val frame = ByteArray(header.size + payload.size)
+        System.arraycopy(header, 0, frame, 0, header.size)
+        System.arraycopy(payload, 0, frame, header.size, payload.size)
+        ws?.sendBinary(frame)
     }
     fun sendStreamStatus(stream: String, state: String) {
         StreamSessionManager.onStreamStatus(stream, state)

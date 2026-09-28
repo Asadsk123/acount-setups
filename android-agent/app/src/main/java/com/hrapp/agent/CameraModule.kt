@@ -11,7 +11,6 @@ import android.hardware.camera2.CameraManager
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Base64
 
 /**
  * Live camera → JPEG frames to the controller (MASTER.md §27 planned interface).
@@ -68,10 +67,9 @@ object CameraModule {
                         lastFrameAt = now
                         val buf = image.planes[0].buffer
                         val bytes = ByteArray(buf.remaining()); buf.get(bytes)
-                        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                        // Bounded queue — drops oldest frame if network is slow (backpressure)
+                        // Binary frame — no base64; ~33% smaller on the wire
                         StreamSessionManager.cameraQueue.offer {
-                            Agent.sendFrame("CAMERA_FRAME", "image/jpeg", b64)
+                            Agent.sendFrameBinary(Agent.BinaryFrameType.CAMERA, payload = bytes)
                         }
                         StreamSessionManager.cameraQueue.drain()
                     }

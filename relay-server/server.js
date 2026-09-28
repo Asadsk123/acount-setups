@@ -175,8 +175,23 @@ wss.on('connection', (ws, req) => {
 
   ws.on('error', (err) => { console.error('[ws error]', err.message); });
 
-  ws.on('message', (raw) => {
+  ws.on('message', (raw, isBinary) => {
     statsMsgs++;
+
+    // Binary media frame: [1 byte type][36 bytes device_id ASCII][payload]
+    // Types: 0x01=CAMERA_FRAME, 0x02=MIC_CHUNK(+4 bytes sample_rate), 0x03=SCREEN_FRAME
+    if (isBinary) {
+      if (!boundDeviceId || boundRole !== 'agent') return; // must be authed
+      const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw);
+      if (buf.length < 37) return;
+      const frameType = buf[0];
+      const deviceId = buf.slice(1, 37).toString('ascii');
+      if (deviceId !== boundDeviceId) return; // device_id mismatch — reject silently
+      const controller = connections.get(`${deviceId}:controller`);
+      if (controller) controller.ws.send(buf, { binary: true }); // forward as-is
+      return;
+    }
+
     let msg;
     // Temp debug: track last 20 message types to diagnose zero-audit issue
     try { const t = JSON.parse(raw.toString()).message_type; lastMsgTypes.unshift(t); if (lastMsgTypes.length > 20) lastMsgTypes.pop(); } catch {}

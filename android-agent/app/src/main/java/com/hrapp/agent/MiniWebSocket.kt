@@ -29,6 +29,7 @@ class MiniWebSocket(
     interface Listener {
         fun onOpen()
         fun onMessage(text: String)
+        fun onBinary(bytes: ByteArray) {}  // optional: relay-to-agent binary frames (currently unused)
         fun onFailure(t: Throwable)
         fun onClosed()
     }
@@ -41,6 +42,7 @@ class MiniWebSocket(
     fun connectAsync() { Thread({ runLoop() }, "mini-ws").start() }
 
     private fun runLoop() {
+        var failed = false
         try {
             val s = if (tls) SSLSocketFactory.getDefault().createSocket(host, port) else Socket(host, port)
             socket = s
@@ -50,10 +52,11 @@ class MiniWebSocket(
             listener.onOpen()
             readLoop()
         } catch (e: Exception) {
+            failed = true
             listener.onFailure(e)
         } finally {
             try { socket?.close() } catch (_: Exception) {}
-            listener.onClosed()
+            if (!failed) listener.onClosed()
         }
     }
 
@@ -81,18 +84,23 @@ class MiniWebSocket(
     }
 
     @Synchronized
-    fun send(text: String) {
+    fun send(text: String) { sendFrame(0x81, text.toByteArray(StandardCharsets.UTF_8)) }
+
+    /** Send a binary frame (opcode 0x82). Used for raw media bytes to avoid base64 overhead. */
+    @Synchronized
+    fun sendBinary(bytes: ByteArray) { sendFrame(0x82, bytes) }
+
+    private fun sendFrame(opcode: Int, payload: ByteArray) {
         try {
             val o = out ?: return
-            val payload = text.toByteArray(StandardCharsets.UTF_8)
             val mask = ByteArray(4).also { SecureRandom().nextBytes(it) }
-            val frame = ByteArrayOutputStream()
-            frame.write(0x81) // FIN + text
+            val frame = ByteArrayOutputStream(payload.size + 10)
+            frame.write(opcode)
             val len = payload.size
             when {
                 len <= 125 -> frame.write(0x80 or len)
                 len <= 65535 -> { frame.write(0x80 or 126); frame.write((len shr 8) and 0xFF); frame.write(len and 0xFF) }
-                else -> { frame.write(0x80 or 127); for (i in 7 downTo 0) frame.write((len ushr (8 * i)) and 0xFF) }
+                else -> { frame.write(0x80 or 127); val lenL = len.toLong(); for (i in 7 downTo 0) frame.write(((lenL ushr (8 * i)) and 0xFF).toInt()) }
             }
             frame.write(mask)
             for (i in 0 until len) frame.write(payload[i].toInt() xor mask[i % 4].toInt())
@@ -130,9 +138,10 @@ class MiniWebSocket(
             while (read < len) { val r = ins.read(payload, read, len - read); if (r == -1) return; read += r }
             if (masked && maskKey != null) for (i in 0 until len) payload[i] = (payload[i].toInt() xor maskKey[i % 4].toInt()).toByte()
             when (opcode) {
-                0x8 -> { running = false; return }                       // close
+                0x8 -> { running = false; return }                         // close
                 0x1 -> listener.onMessage(String(payload, StandardCharsets.UTF_8)) // text
-                0x9 -> sendControl(0xA, payload)                          // ping -> pong (keeps NAT/relay alive)
+                0x2 -> listener.onBinary(payload)                          // binary (future: relay→agent frames)
+                0x9 -> sendControl(0xA, payload)                           // ping → pong
             }
         }
     }

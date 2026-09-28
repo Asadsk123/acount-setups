@@ -6,17 +6,14 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.util.Base64
 
 /**
  * Live microphone → PCM chunks to the controller (MASTER.md §11). Explicit,
  * visible capture — no silent recording (MASTER.md §21 non-goal). Requires the
  * RECORD_AUDIO runtime permission, which the user grants by hand.
  *
- * ponytail: raw 16-bit PCM at 8 kHz, base64 over the existing JSON channel.
- * That's the smallest thing that carries real audio to the browser's WebAudio.
- * Upgrade path: Opus encode + binary WS frames when bandwidth matters
- * (base64 adds ~33%). Marked so it's a deliberate ceiling, not an oversight.
+ * ponytail: raw 16-bit PCM at 8 kHz over binary WebSocket frames (no base64).
+ * Upgrade path: Opus encode when bandwidth matters.
  */
 object MicModule {
     private const val SAMPLE_RATE = 8000
@@ -53,10 +50,9 @@ object MicModule {
                         bytes[i * 2] = (buf[i].toInt() and 0xFF).toByte()
                         bytes[i * 2 + 1] = (buf[i].toInt() shr 8).toByte()
                     }
-                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                    // Bounded mic queue — 10 chunks max (bounded latency)
+                    // Binary mic frame — no base64 overhead
                     StreamSessionManager.micQueue.offer {
-                        Agent.sendMicChunk(b64, SAMPLE_RATE)
+                        Agent.sendFrameBinary(Agent.BinaryFrameType.MIC, SAMPLE_RATE, bytes)
                     }
                     StreamSessionManager.micQueue.drain()
                 }
