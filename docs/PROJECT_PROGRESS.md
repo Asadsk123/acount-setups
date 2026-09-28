@@ -212,7 +212,36 @@ Full production-readiness pass. All changes compiled to **build 5** APK and depl
 - 500 GB/s target: BLOCKED (physics). 50 GB/s cellular: BLOCKED (network). Documented in FINAL_REQUIREMENTS_MATRIX.md.
 
 ### Status (TASK-01 still waiting)
-- **WAITING for POCO X7 physical device action:** install v12 APK as update (not uninstall), capture CONNECT → PAIR_INIT → CODE → AUTH → READY sequence in logcat.
-- Public relay not deployed yet — user must choose Railway or Cloudflare Tunnel (cannot use token).
+- **WAITING for POCO X7 physical device action:** install v13 APK as update (not uninstall), capture CONNECT → PAIR_INIT → CODE → AUTH → READY sequence in logcat. Checklist: `docs/TASK01_VERIFICATION_CHECKLIST.md`.
+- Public relay not deployed yet — user must choose Railway or Cloudflare Tunnel (cannot use token). Guide: `DEPLOY_RELAY.md`.
 - Camera / mic / screen / location: NOT VERIFIED on real device.
-- ConnectionState.PAIRED: state transitions to AUTHENTICATED on AUTH_OK; controller-side PAIR completion needs a follow-up pass.
+
+## 2026-09-28 — PAIR-006 fix + verification checklist + traceability matrix (v13)
+
+### PAIR-006 — agent now transitions to PAIRED state
+- Root cause: relay sent `PAIR_RESPONSE OK` to controller only; agent was never notified.
+- Fix: relay pushes `PAIR_COMPLETE` to agent socket after controller's successful `PAIR_REQUEST`.
+- Fix: Agent.kt handles `PAIR_COMPLETE` → `transition(PAIRED)`.
+- test_vertical_slice.js updated with PAIR-006 assertion — all 3 relay regression suites PASS.
+
+### Verification checklist (`docs/TASK01_VERIFICATION_CHECKLIST.md`)
+Complete step-by-step test procedure for POCO X7:
+- Section A: T&C onboarding (update preservation, first-install, terms-version re-consent)
+- Section B: Connection state machine (CONNECTING → WS_OPEN → AUTHENTICATING → AUTHENTICATED)
+- Section C: Persistent pairing (app restart, process death, reboot, network loss, relay restart)
+- Section D: Exponential backoff real timing (forced failures, timestamp evidence)
+- Section E: Pairing code display + controller entry
+- Section F: Media streams (camera/mic/screen/location/speaker/simultaneous)
+- Logcat command reference + evidence template
+
+### Requirements traceability matrix (`docs/REQUIREMENTS_TRACEABILITY_MATRIX.md`)
+Full matrix: NET/PAIR/SETUP/STREAM/PERF/SEC/NET-MATRIX
+Key statuses:
+- PAIR-006: now PASS(relay) after fix
+- SETUP-001/002: DESIGN-VERIFIED (not yet device-tested)
+- STREAM-008 (H.264): NOT IMPLEMENTED
+- PERF-001 (500 GB/s): BLOCKED — measured 41.6 MB/s (333 Mbps) localhost
+- SEC-007 (token): PASS — not in git history/working tree; user must revoke at vercel.com/account/tokens
+- All media streams: PASS(relay) / NOT VERIFIED on device
+
+### versionCode 12→13, versionName 1.12→1.13
