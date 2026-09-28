@@ -221,6 +221,9 @@ wss.on('connection', (ws, req) => {
         const token = makeSessionToken(entry.deviceId, secret);
         send(ws, { message_type: 'PAIR_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: entry.deviceId, session_token: token } });
         logAudit({ type: 'PAIR_COMPLETE', deviceId: entry.deviceId, detail: 'controller paired' });
+        // Notify the agent so it can transition to PAIRED state (PAIR-006).
+        const agentConn = connections.get(`${entry.deviceId}:agent`);
+        if (agentConn) send(agentConn.ws, { message_type: 'PAIR_COMPLETE', payload: { device_id: entry.deviceId } });
         break;
       }
 

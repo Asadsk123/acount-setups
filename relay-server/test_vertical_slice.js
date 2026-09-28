@@ -40,10 +40,14 @@ async function main() {
   assert(agentAuth.status === 'OK', 'agent AUTH_REQUEST should succeed');
 
   // 3. Controller enters the pairing code shown on the phone.
+  const agentReceivesPairComplete = once(agent, 'PAIR_COMPLETE'); // PAIR-006
   controller.send(JSON.stringify({ message_type: 'PAIR_REQUEST', request_id: 'r2', payload: { pairing_code } }));
   const pairRes = await once(controller, 'PAIR_RESPONSE');
   assert(pairRes.status === 'OK', 'PAIR_REQUEST should succeed with valid code');
   const { session_token } = pairRes.payload;
+  // PAIR-006: agent must be notified so it can transition to PAIRED state.
+  const pairCompleteMsg = await agentReceivesPairComplete;
+  assert(pairCompleteMsg.payload?.device_id === device_id, 'agent should receive PAIR_COMPLETE with device_id');
 
   // 3b. Wrong PIN must be rejected.
   const rogue = await connect();
@@ -81,7 +85,7 @@ async function main() {
   assert(auditRes.some((e) => e.type === 'PLAY_SOUND_SENT' && e.deviceId === device_id), 'audit log should contain PLAY_SOUND_SENT');
   assert(auditRes.some((e) => e.type === 'PLAY_SOUND_RESULT' && e.deviceId === device_id), 'audit log should contain PLAY_SOUND_RESULT');
 
-  console.log('ALL CHECKS PASSED — pair -> auth -> PLAY_SOUND -> ACK -> result -> audit, verified end to end');
+  console.log('ALL CHECKS PASSED — pair -> PAIR_COMPLETE(agent) -> auth -> PLAY_SOUND -> ACK -> result -> audit, verified end to end');
   process.exit(0);
 }
 

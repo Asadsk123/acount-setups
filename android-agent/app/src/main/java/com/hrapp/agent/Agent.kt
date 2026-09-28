@@ -250,6 +250,12 @@ object Agent {
                     sendPairInit()
                 }
             }
+            "PAIR_COMPLETE" -> {
+                Log.d(TAG, "PAIR_COMPLETE: controller has paired — transitioning to PAIRED")
+                transition(ConnectionState.PAIRED)
+                status("paired with controller")
+                log("[PAIR] controller paired — PAIRED")
+            }
             "PLAY_SOUND" -> {
                 val soundId = msg.optJSONObject("payload")?.optString("sound_id", "tan_tan") ?: "tan_tan"
                 log("PLAY_SOUND received: $soundId")
