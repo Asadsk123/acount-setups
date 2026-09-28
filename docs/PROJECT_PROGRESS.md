@@ -181,3 +181,38 @@ Full production-readiness pass. All changes compiled to **build 5** APK and depl
 ### Vercel deployment
 - **Production URL:** https://vercel-deploy-phi-flame-42.vercel.app
 - APK download: https://vercel-deploy-phi-flame-42.vercel.app/hrapp-remote.apk
+
+## 2026-09-28 — Phase G + SETUP-001: exponential backoff + T&C onboarding (v12)
+
+### Phase G — exponential backoff reconnect (Agent.kt, v11)
+- `retryDelayMs` starts at 2s, doubles per failure, caps at 60s + ±1s jitter.
+- `scheduleReconnect(gen)` replaces the previous hardcoded 5s `postDelayed`.
+- `resetBackoff()` called on AUTH_RESPONSE OK — connection success resets the ladder.
+- Status text shows retry delay so the operator knows the current backoff window.
+- Build v11 compiled; relay regression suite (vertical_slice / reconnect / authz) all PASS.
+
+### SETUP-001 — T&C onboarding wired into MainActivity (v12)
+- `showTermsDialog()` blocks app start until user explicitly accepts or declines.
+- Decline → `finish()` — no way into the app without acceptance.
+- Terms versioned (`CURRENT_TERMS_VERSION=1`); bump that int to force re-acceptance on update.
+- `startMainFlow()` extracted: called after acceptance, or immediately if already done.
+- `btnConnect` now calls `SetupManager.markRelayConfigured()/markComplete()` — SetupManager stage advances on first relay save.
+- SetupManager state survives updates (SharedPreferences keyed to `hrapp_setup`, not agent_config).
+
+### Relay deployment guide (DEPLOY_RELAY.md)
+- Explains why Vercel (serverless) cannot host a persistent WebSocket relay.
+- Option A: Cloudflare Tunnel (free, no account needed, URL changes per restart).
+- Option B: Railway (free 500h/month, stable URL, WebSocket-native).
+- Option C: Render (free tier, stable URL).
+- `relay-server/railway.json` + `Procfile` added so Railway auto-deploys on push.
+- Controller (static files only) is still fine on Vercel.
+
+### Throughput / PERF-001 documented
+- `relay-server/bench_throughput.js`: measured **41.6 MB/s (333 Mbps)** over localhost (200×100KB in 469ms).
+- 500 GB/s target: BLOCKED (physics). 50 GB/s cellular: BLOCKED (network). Documented in FINAL_REQUIREMENTS_MATRIX.md.
+
+### Status (TASK-01 still waiting)
+- **WAITING for POCO X7 physical device action:** install v12 APK as update (not uninstall), capture CONNECT → PAIR_INIT → CODE → AUTH → READY sequence in logcat.
+- Public relay not deployed yet — user must choose Railway or Cloudflare Tunnel (cannot use token).
+- Camera / mic / screen / location: NOT VERIFIED on real device.
+- ConnectionState.PAIRED: state transitions to AUTHENTICATED on AUTH_OK; controller-side PAIR completion needs a follow-up pass.
