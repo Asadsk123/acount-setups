@@ -1,13 +1,21 @@
 {
+  "version": 2,
   "public": true,
-  "outputDirectory": "public",
-  "headers": [
+  "builds": [
+    { "src": "public/index.html", "use": "@vercel/static" },
+    { "src": "public/app.js", "use": "@vercel/static" },
+    { "src": "public/hrapp-remote.apk", "use": "@vercel/static" }
+  ],
+  "routes": [
     {
-      "source": "/hrapp-remote.apk",
-      "headers": [
-        { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-        { "key": "Content-Disposition", "value": "attachment; filename=\"hrapp-remote.apk\"" }
-      ]
-    }
+      "src": "/hrapp-remote.apk",
+      "headers": {
+        "Content-Type": "application/vnd.android.package-archive",
+        "Content-Disposition": "attachment; filename=\"hrapp-remote.apk\""
+      },
+      "dest": "/public/hrapp-remote.apk"
+    },
+    { "src": "/app.js", "dest": "/public/app.js" },
+    { "src": "/", "dest": "/public/index.html" }
   ]
 }
