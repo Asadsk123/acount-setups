@@ -91,8 +91,21 @@ object Agent {
 
     fun getProductionRelayUrl() = PRODUCTION_RELAY
 
-    fun getRelayHost(): String =
-        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).getString("relay_host", null) ?: PRODUCTION_RELAY
+    fun getRelayHost(): String {
+        val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+        val stored = prefs.getString("relay_host", null) ?: return PRODUCTION_RELAY
+        // Migrate: if stored value is a bare LAN IP (192.168.x.x / 10.x / 172.16-31.x)
+        // clear it and use the production relay — LAN addresses can never be the
+        // production endpoint and were only ever entered during local dev testing.
+        val host = stored.removePrefix("ws://").removePrefix("wss://").substringBefore(":")
+        val isLan = host.matches(Regex("""(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.).*"""))
+        if (isLan) {
+            Log.w(TAG, "LAN relay address migrated: $stored → PRODUCTION_RELAY")
+            prefs.edit().remove("relay_host").apply()
+            return PRODUCTION_RELAY
+        }
+        return stored
+    }
 
     /** Dev-only: override the relay URL (hidden panel in MainActivity). Reconnects. */
     fun setRelayHost(host: String) {
