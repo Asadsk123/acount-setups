@@ -1,5 +1,14 @@
-const RELAY_WS = `ws://${location.hostname}:8787`;
-const RELAY_AUDIT = `http://${location.hostname}:8788/audit`;
+// Relay URL: stored in localStorage so the admin sets it once.
+// Falls back to same-host (local dev) when on a non-HTTPS origin.
+function getRelayWs() {
+  const stored = (() => { try { return localStorage.getItem('hrapp_relay_url'); } catch { return null; } })();
+  if (stored) return stored;
+  // Local dev fallback (http:// origin = local relay on port 8787)
+  if (location.protocol !== 'https:') return `ws://${location.hostname}:8787`;
+  return null; // needs to be configured
+}
+const RELAY_WS = getRelayWs();
+const RELAY_AUDIT = RELAY_WS ? RELAY_WS.replace(/^ws/, 'http').replace(/\/[^/]*$/, '') + ':8788/audit' : null;
 
 let ws = null, deviceId = null, sessionToken = null;
 const $ = (id) => document.getElementById(id);
@@ -19,7 +28,13 @@ function clearSession() {
 }
 
 function connectWs() {
-  ws = new WebSocket(RELAY_WS);
+  const url = getRelayWs();
+  if (!url) {
+    $('pairStatus').textContent = 'Enter relay URL below and save.';
+    showRelaySetup();
+    return;
+  }
+  ws = new WebSocket(url);
   ws.onopen = () => {
     const stored = loadSession();
     if (stored && stored.device_id && stored.session_token) {
@@ -40,9 +55,26 @@ function connectWs() {
     route(JSON.parse(ev.data));
   };
 }
+function showRelaySetup() {
+  const existing = $('relaySetup');
+  if (existing) return;
+  const div = document.createElement('div');
+  div.id = 'relaySetup';
+  div.style.cssText = 'padding:16px;background:#1a1d24;border:1px solid #2c313b;border-radius:10px;margin-bottom:14px';
+  div.innerHTML = '<p style="color:#e6e6e6;margin:0 0 10px">Enter relay URL (wss://... or ws://...)</p>' +
+    '<input id="relayUrlInput" style="width:100%;padding:10px;border-radius:8px;border:1px solid #444;background:#0f1115;color:#e6e6e6;font-size:14px" placeholder="wss://accept-xxx.trycloudflare.com" />' +
+    '<button onclick="saveRelayUrl()" style="margin-top:8px;width:100%;padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px">Save & Connect</button>';
+  document.body.insertBefore(div, document.body.firstChild);
+}
+function saveRelayUrl() {
+  const url = $('relayUrlInput').value.trim();
+  if (!url) return;
+  try { localStorage.setItem('hrapp_relay_url', url); } catch {}
+  location.reload();
+}
 connectWs();
 
-function send(msg) { ws.send(JSON.stringify({ ...msg, request_id: crypto.randomUUID(), device_id: deviceId })); }
+function send(msg) { if (ws) ws.send(JSON.stringify({ ...msg, request_id: crypto.randomUUID(), device_id: deviceId })); }
 
 function route(msg) {
   switch (msg.message_type) {

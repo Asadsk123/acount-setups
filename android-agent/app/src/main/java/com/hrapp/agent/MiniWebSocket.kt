@@ -38,6 +38,8 @@ class MiniWebSocket(
     private var out: OutputStream? = null
     private var input: InputStream? = null
     @Volatile private var running = true
+    @Volatile private var lastPongMs = 0L
+    private val pingTimer = java.util.Timer("ws-ping", true)
 
     fun connectAsync() { Thread({ runLoop() }, "mini-ws").start() }
 
@@ -49,6 +51,8 @@ class MiniWebSocket(
             out = s.getOutputStream()
             input = s.getInputStream()
             handshake()
+            lastPongMs = System.currentTimeMillis()
+            startPingTimer()
             listener.onOpen()
             readLoop()
         } catch (e: Exception) {
@@ -142,12 +146,30 @@ class MiniWebSocket(
                 0x1 -> listener.onMessage(String(payload, StandardCharsets.UTF_8)) // text
                 0x2 -> listener.onBinary(payload)                          // binary (future: relay→agent frames)
                 0x9 -> sendControl(0xA, payload)                           // ping → pong
+                0xA -> lastPongMs = System.currentTimeMillis()             // pong received
             }
         }
     }
 
+    private fun startPingTimer() {
+        pingTimer.scheduleAtFixedRate(object : java.util.TimerTask() {
+            override fun run() {
+                if (!running) { cancel(); return }
+                val age = System.currentTimeMillis() - lastPongMs
+                if (age > 60_000) {
+                    running = false
+                    try { socket?.close() } catch (_: Exception) {}
+                    listener.onFailure(Exception("heartbeat timeout ${age}ms"))
+                    cancel(); return
+                }
+                try { sendControl(0x9, ByteArray(0)) } catch (_: Exception) {}
+            }
+        }, 25_000, 25_000)
+    }
+
     fun close() {
         running = false
+        pingTimer.cancel()
         try { socket?.close() } catch (_: Exception) {}
     }
 }

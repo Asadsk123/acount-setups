@@ -213,7 +213,10 @@ wss.on('connection', (ws, req) => {
         pairedDevices.set(deviceId, secret);
         savePaired();
         pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 10 * 60_000 }); // 10 min per PAIR-002
-        send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code } });
+        // device_secret is sent ONCE to the agent so it can authenticate on reconnect.
+        // The agent stores it in SharedPreferences; the relay keeps it in pairedDevices.
+        // This is the shared-secret that replaces bare device_id auth.
+        send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code, device_secret: secret } });
         logAudit({ type: 'PAIR_INIT', deviceId });
         break;
       }
@@ -254,7 +257,10 @@ wss.on('connection', (ws, req) => {
         // the session_token from PAIR_RESPONSE. Real mutual-auth (asymmetric
         // keys, Android Keystore) is Phase 1 hardening — MASTER.md §17 — this
         // is deliberately the smallest thing that proves the flow end to end.
-        if (role === 'controller' && !verifySessionToken(device_id, secret, msg.payload?.session_token)) {
+        // Both agent and controller must now present a valid session token.
+        // Agent's token is derived from device_secret (received at PAIR_INIT_RESPONSE).
+        // Controller's token comes from PAIR_RESPONSE.
+        if (!verifySessionToken(device_id, secret, msg.payload?.session_token)) {
           return send(ws, { message_type: 'AUTH_RESPONSE', status: 'ERROR', error_code: 'AUTH_FAILED' });
         }
         boundDeviceId = device_id;

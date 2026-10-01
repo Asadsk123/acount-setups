@@ -6,6 +6,9 @@ import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
 import java.util.UUID
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import java.security.SecureRandom
 
 private const val TAG = "HRAPP"
 
@@ -22,16 +25,12 @@ enum class ConnectionState {
 }
 
 object Agent {
-    // Relay address is user-configurable (phone + PC must reach each other).
-    // Stored in prefs so it survives restarts; defaults to a LAN placeholder
-    // the user edits on first launch. This is why pairing "does nothing" if the
-    // IP is wrong — the agent can't reach the relay to get a code.
     private const val PREF = "agent_config"
-    // The user enters a full server address. Two shapes:
-    //  - LAN (same Wi-Fi):  192.168.1.5   or  ws://192.168.1.5:8787
-    //  - Internet (remote): wss://abcd-1234.trycloudflare.com   (from the tunnel)
-    private const val DEFAULT_HOST = "192.168.1.100"
     private const val DEFAULT_PORT = 8787
+    // Production relay URL — baked in so no user IP entry is needed.
+    // Update this constant when deploying a stable Railway/Render endpoint.
+    // Dev override: set relay_host in SharedPreferences via the hidden dev panel (5× tap on version).
+    private const val PRODUCTION_RELAY = "wss://accept-pittsburgh-romantic-patio.trycloudflare.com"
 
     interface StatusListener {
         fun onStatus(text: String)
@@ -90,15 +89,17 @@ object Agent {
         }
     }
 
-    fun getRelayHost(): String =
-        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).getString("relay_host", DEFAULT_HOST) ?: DEFAULT_HOST
+    fun getProductionRelayUrl() = PRODUCTION_RELAY
 
-    /** Called from the UI when the user enters/changes the PC's IP. Reconnects. */
+    fun getRelayHost(): String =
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).getString("relay_host", null) ?: PRODUCTION_RELAY
+
+    /** Dev-only: override the relay URL (hidden panel in MainActivity). Reconnects. */
     fun setRelayHost(host: String) {
-        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit().putString("relay_host", host.trim()).commit()
-        deviceId = null
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).edit()
+            .putString("relay_host", host.trim().ifBlank { null }).commit()
         lastPairingCode = null
-        connect() // connect() closes old ws internally
+        connect()
     }
 
     /** Parse whatever the user typed into (tls, host, port). Accepts a bare IP,
@@ -201,6 +202,26 @@ object Agent {
         return id
     }
 
+    /** HMAC-SHA256 token matching relay's makeSessionToken(deviceId, secret). */
+    private fun makeAgentToken(deviceId: String, secretHex: String): String {
+        val nonce = ByteArray(12).also { SecureRandom().nextBytes(it) }
+            .joinToString("") { "%02x".format(it) }
+        val secretBytes = secretHex.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        val mac = Mac.getInstance("HmacSHA256")
+        mac.init(SecretKeySpec(secretBytes, "HmacSHA256"))
+        val sig = mac.doFinal("$deviceId:$nonce".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return "$nonce.$sig"
+    }
+
+    private fun storeDeviceSecret(secret: String) {
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+            .edit().putString("device_secret", secret).apply()
+    }
+
+    private fun loadDeviceSecret(): String? =
+        appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE).getString("device_secret", null)
+
     private fun sendPairInit() {
         deviceId = stableDeviceId()
         Log.d(TAG, "sendPairInit: device_id=${deviceId?.take(8)}")
@@ -213,12 +234,18 @@ object Agent {
     }
 
     private fun sendAuth() {
-        Log.d(TAG, "sendAuth: device_id=${deviceId?.take(8)}")
-        send(JSONObject().apply {
+        val id = deviceId ?: return
+        val secret = loadDeviceSecret()
+        Log.d(TAG, "sendAuth: device_id=${id.take(8)} hasSecret=${secret != null}")
+        val msg = JSONObject().apply {
             put("message_type", "AUTH_REQUEST")
-            put("device_id", deviceId)
+            put("device_id", id)
             put("role", "agent")
-        })
+            if (secret != null) {
+                put("payload", JSONObject().put("session_token", makeAgentToken(id, secret)))
+            }
+        }
+        send(msg)
     }
 
     private fun handleMessage(text: String) {
@@ -228,6 +255,8 @@ object Agent {
                 val payload = msg.getJSONObject("payload")
                 deviceId = payload.getString("device_id")
                 val code = payload.getString("pairing_code")
+                // Store device_secret so we can authenticate on reconnect without re-pairing.
+                payload.optString("device_secret").takeIf { it.isNotEmpty() }?.let { storeDeviceSecret(it) }
                 Log.d(TAG, "PAIR_INIT_RESPONSE: device_id=${deviceId?.take(8)} code=$code")
                 lastPairingCode = code
                 transition(ConnectionState.PAIRING_REQUIRED)
@@ -247,8 +276,14 @@ object Agent {
                     status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
                 } else {
-                    Log.d(TAG, "AUTH_RESPONSE: FAIL — falling back to PAIR_INIT")
-                    log("[PAIR] AUTH failed — sending PAIR_INIT")
+                    // AUTH_FAILED: the relay doesn't recognize our credentials.
+                    // If we have a stored device_id this is likely a relay-wipe or
+                    // credential rotation — clear the stale secret and re-register.
+                    // Never silently create a new device_id; clear explicitly first.
+                    Log.w(TAG, "AUTH_RESPONSE: FAIL — clearing stale secret, re-registering same device_id")
+                    log("[PAIR] AUTH failed — re-registering with relay")
+                    appContext.getSharedPreferences(PREF, 0).edit()
+                        .remove("device_secret").apply()
                     lastPairingCode = null
                     transition(ConnectionState.WS_OPEN)
                     sendPairInit()

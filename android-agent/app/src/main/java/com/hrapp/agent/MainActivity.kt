@@ -35,6 +35,7 @@ class MainActivity : Activity(), Agent.StatusListener {
     private lateinit var logText: TextView
     private lateinit var relayHost: EditText
     private lateinit var diagText: TextView
+    private var versionTapCount = 0
     private val diagHandler = Handler(Looper.getMainLooper())
     private val diagRunnable = object : Runnable {
         override fun run() { refreshDiag(); diagHandler.postDelayed(this, 5_000) }
@@ -48,7 +49,21 @@ class MainActivity : Activity(), Agent.StatusListener {
         logText = findViewById(R.id.logText)
         diagText = findViewById(R.id.diagText)
         relayHost = findViewById(R.id.relayHost)
-        relayHost.setText(Agent.getRelayHost())
+        relayHost.setText(Agent.getRelayHost().let {
+            // Show blank if using the built-in production URL (keeps field clean for dev use)
+            if (it == Agent.getProductionRelayUrl()) "" else it
+        })
+
+        // 5-tap on version text reveals the developer relay override field
+        findViewById<TextView>(R.id.versionTap).setOnClickListener {
+            versionTapCount++
+            if (versionTapCount >= 5) {
+                versionTapCount = 0
+                val row = findViewById<android.view.View>(R.id.devRelayRow)
+                row.visibility = if (row.visibility == android.view.View.GONE)
+                    android.view.View.VISIBLE else android.view.View.GONE
+            }
+        }
 
         // SETUP-001: show T&C on first run; block until accepted.
         if (SetupManager.needsTerms(this)) {
@@ -92,12 +107,9 @@ class MainActivity : Activity(), Agent.StatusListener {
         if (android.os.Build.VERSION.SDK_INT >= 33) perms.add("android.permission.POST_NOTIFICATIONS")
         requestPermissions(perms.toTypedArray(), 1000)
 
-        // Mark relay configured when user taps Connect so SetupManager advances.
+        // Dev relay override: apply new URL and reconnect.
         findViewById<Button>(R.id.btnConnect).setOnClickListener {
-            val host = relayHost.text.toString()
-            Agent.setRelayHost(host)
-            SetupManager.markRelayConfigured(this)
-            if (!SetupManager.isComplete(this)) SetupManager.markComplete(this)
+            Agent.setRelayHost(relayHost.text.toString())
         }
         findViewById<Button>(R.id.btnMedia).setOnClickListener {
             requestPermissions(arrayOf(
@@ -139,10 +151,13 @@ class MainActivity : Activity(), Agent.StatusListener {
     }
 
     private fun refreshDiag() {
-        val snap = NetworkDiagnostics.snapshot(this)
-        diagText.text = NetworkDiagnostics.format(snap)
-        // Log once so logcat shows the full diagnostic block (NET-002 evidence)
-        Log.d("HRAPP", "DIAG device_id=${snap.deviceId} transport=${snap.transport} ip=${snap.currentIp} relay=${snap.relayEndpoint} state=${snap.connectionState}")
+        // NetworkInterface.getNetworkInterfaces() must NOT run on the main thread.
+        Thread {
+            val snap = NetworkDiagnostics.snapshot(this)
+            val text = NetworkDiagnostics.format(snap)
+            Log.d("HRAPP", "DIAG device_id=${snap.deviceId} transport=${snap.transport} ip=${snap.currentIp} relay=${snap.relayEndpoint} state=${snap.connectionState}")
+            runOnUiThread { if (!isFinishing) diagText.text = text }
+        }.start()
     }
 
     override fun onStatus(text: String) = runOnUiThread {
