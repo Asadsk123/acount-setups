@@ -4,7 +4,8 @@
   "builds": [
     { "src": "public/index.html", "use": "@vercel/static" },
     { "src": "public/app.js", "use": "@vercel/static" },
-    { "src": "public/hrapp-remote.apk", "use": "@vercel/static" }
+    { "src": "public/hrapp-remote.apk", "use": "@vercel/static" },
+    { "src": "public/relay.json", "use": "@vercel/static" }
   ],
   "routes": [
     {
@@ -14,6 +15,14 @@
         "Content-Disposition": "attachment; filename=\"hrapp-remote.apk\""
       },
       "dest": "/public/hrapp-remote.apk"
+    },
+    {
+      "src": "/relay.json",
+      "headers": {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*"
+      },
+      "dest": "/public/relay.json"
     },
     { "src": "/app.js", "dest": "/public/app.js" },
     { "src": "/", "dest": "/public/index.html" }

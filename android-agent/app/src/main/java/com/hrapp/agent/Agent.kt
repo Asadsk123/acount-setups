@@ -30,7 +30,10 @@ object Agent {
     // Production relay URL — baked in so no user IP entry is needed.
     // Update this constant when deploying a stable Railway/Render endpoint.
     // Dev override: set relay_host in SharedPreferences via the hidden dev panel (5× tap on version).
-    private const val PRODUCTION_RELAY = "wss://accept-pittsburgh-romantic-patio.trycloudflare.com"
+    private const val PRODUCTION_RELAY = "wss://blink-jose-resolve-bulk.trycloudflare.com"
+    // Remote config: APK fetches relay URL from controller on startup so cloudflared
+    // URL changes don't require an APK rebuild — just update /relay.json on Vercel.
+    private const val REMOTE_CONFIG_URL = "https://royal-kids-three.vercel.app/relay.json"
 
     interface StatusListener {
         fun onStatus(text: String)
@@ -76,7 +79,29 @@ object Agent {
         Log.d(TAG, "init: called, already=${::appContext.isInitialized}")
         if (::appContext.isInitialized) return
         appContext = app
+        fetchRemoteRelayConfig() // async — updates configured_relay if changed, then reconnects
         connect()
+    }
+
+    /** Fetches relay URL from the controller's /relay.json. Reconnects if it changed.
+     *  This lets the relay URL be updated without rebuilding the APK. */
+    private fun fetchRemoteRelayConfig() {
+        Thread {
+            try {
+                val conn = java.net.URL(REMOTE_CONFIG_URL).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 5_000; conn.readTimeout = 5_000
+                val relay = org.json.JSONObject(conn.inputStream.bufferedReader().readText()).getString("relay")
+                if (!relay.startsWith("wss://") && !relay.startsWith("ws://")) return@Thread
+                val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+                if (prefs.getString("configured_relay", null) != relay) {
+                    prefs.edit().putString("configured_relay", relay).apply()
+                    Log.i(TAG, "Remote relay config updated: $relay")
+                    mainHandler.post { connect() } // reconnect immediately with new URL
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Remote relay config fetch failed: ${e.message}")
+            }
+        }.start()
     }
 
     fun setStatusListener(listener: StatusListener?) {
@@ -93,18 +118,24 @@ object Agent {
 
     fun getRelayHost(): String {
         val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
-        val stored = prefs.getString("relay_host", null) ?: return PRODUCTION_RELAY
-        // Migrate: if stored value is a bare LAN IP (192.168.x.x / 10.x / 172.16-31.x)
-        // clear it and use the production relay — LAN addresses can never be the
-        // production endpoint and were only ever entered during local dev testing.
-        val host = stored.removePrefix("ws://").removePrefix("wss://").substringBefore(":")
-        val isLan = host.matches(Regex("""(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.).*"""))
-        if (isLan) {
-            Log.w(TAG, "LAN relay address migrated: $stored → PRODUCTION_RELAY")
-            prefs.edit().remove("relay_host").apply()
-            return PRODUCTION_RELAY
+        // Dev override (hidden panel) — highest priority.
+        val devOverride = prefs.getString("relay_host", null)
+        if (devOverride != null) {
+            val host = devOverride.removePrefix("ws://").removePrefix("wss://").substringBefore(":")
+            val isLan = host.matches(Regex("""(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.).*"""))
+            if (isLan) {
+                Log.w(TAG, "LAN relay address migrated away: $devOverride")
+                prefs.edit().remove("relay_host").apply()
+                // fall through to remote-configured or built-in default
+            } else {
+                return devOverride
+            }
         }
-        return stored
+        // Remote-configured relay (fetched from /relay.json on Vercel) — second priority.
+        val remoteConfigured = prefs.getString("configured_relay", null)
+        if (remoteConfigured != null) return remoteConfigured
+        // Built-in fallback.
+        return PRODUCTION_RELAY
     }
 
     /** Dev-only: override the relay URL (hidden panel in MainActivity). Reconnects. */
