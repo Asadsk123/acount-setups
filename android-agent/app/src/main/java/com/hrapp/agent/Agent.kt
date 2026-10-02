@@ -2,6 +2,7 @@ package com.hrapp.agent
 
 import android.app.Application
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.util.Log
 import org.json.JSONObject
@@ -58,6 +59,11 @@ object Agent {
         private set
     // Exponential backoff: 2s, 4s, 8s, 16s, 32s, cap 60s + jitter
     private var retryDelayMs = 2_000L
+    // Dedicated IO thread: socket writes (send/sendBinary) must NOT happen on the
+    // main thread — Android throws NetworkOnMainThreadException for any socket IO
+    // on the main looper. All Agent.send() calls are dispatched here.
+    private val ioThread = HandlerThread("hrapp-io").also { it.start() }
+    private val ioHandler = Handler(ioThread.looper)
 
     private fun transition(next: ConnectionState) {
         val prev = state
@@ -220,7 +226,8 @@ object Agent {
     fun send(json: JSONObject) {
         json.put("protocol_version", 1)
         json.put("timestamp", System.currentTimeMillis())
-        ws?.send(json.toString())
+        val payload = json.toString()
+        ioHandler.post { ws?.send(payload) }
     }
 
     fun send(type: String, payload: JSONObject? = null, requestId: String = UUID.randomUUID().toString()) {
@@ -466,7 +473,7 @@ object Agent {
         val frame = ByteArray(header.size + payload.size)
         System.arraycopy(header, 0, frame, 0, header.size)
         System.arraycopy(payload, 0, frame, header.size, payload.size)
-        ws?.sendBinary(frame)
+        ioHandler.post { ws?.sendBinary(frame) }
     }
     fun sendStreamStatus(stream: String, state: String) {
         StreamSessionManager.onStreamStatus(stream, state)
