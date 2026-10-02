@@ -118,7 +118,7 @@ object Agent {
 
     fun getRelayHost(): String {
         val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
-        // Dev override (hidden panel) — highest priority.
+        // Migrate away any stale LAN dev override regardless of priority.
         val devOverride = prefs.getString("relay_host", null)
         if (devOverride != null) {
             val host = devOverride.removePrefix("ws://").removePrefix("wss://").substringBefore(":")
@@ -126,15 +126,16 @@ object Agent {
             if (isLan) {
                 Log.w(TAG, "LAN relay address migrated away: $devOverride")
                 prefs.edit().remove("relay_host").apply()
-                // fall through to remote-configured or built-in default
-            } else {
-                return devOverride
             }
         }
-        // Remote-configured relay (fetched from /relay.json on Vercel) — second priority.
+        // Remote-configured relay (centrally managed via /relay.json) — highest priority.
+        // This ensures a relay URL update via Vercel is always used, even if a dev override exists.
         val remoteConfigured = prefs.getString("configured_relay", null)
         if (remoteConfigured != null) return remoteConfigured
-        // Built-in fallback.
+        // Dev override (non-LAN) — fallback when relay.json hasn't been fetched yet.
+        val currentOverride = prefs.getString("relay_host", null)
+        if (currentOverride != null) return currentOverride
+        // Built-in production fallback.
         return PRODUCTION_RELAY
     }
 

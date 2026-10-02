@@ -257,10 +257,15 @@ wss.on('connection', (ws, req) => {
         // the session_token from PAIR_RESPONSE. Real mutual-auth (asymmetric
         // keys, Android Keystore) is Phase 1 hardening — MASTER.md §17 — this
         // is deliberately the smallest thing that proves the flow end to end.
-        // Both agent and controller must now present a valid session token.
-        // Agent's token is derived from device_secret (received at PAIR_INIT_RESPONSE).
-        // Controller's token comes from PAIR_RESPONSE.
-        if (!verifySessionToken(device_id, secret, msg.payload?.session_token)) {
+        // Controller must always present a valid session token.
+        // Agent: verify token when provided (v1.16+); accept bare device_id for
+        // legacy agents (v1.15 and below) that predate token-based auth.
+        // ponytail: drop legacy path once all deployed agents are v1.16+.
+        if (role === 'controller' && !verifySessionToken(device_id, secret, msg.payload?.session_token)) {
+          return send(ws, { message_type: 'AUTH_RESPONSE', status: 'ERROR', error_code: 'AUTH_FAILED' });
+        }
+        if (role === 'agent' && msg.payload?.session_token &&
+            !verifySessionToken(device_id, secret, msg.payload?.session_token)) {
           return send(ws, { message_type: 'AUTH_RESPONSE', status: 'ERROR', error_code: 'AUTH_FAILED' });
         }
         boundDeviceId = device_id;

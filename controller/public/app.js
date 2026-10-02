@@ -1,14 +1,30 @@
-// Relay URL: stored in localStorage so the admin sets it once.
-// Falls back to same-host (local dev) when on a non-HTTPS origin.
+// Relay URL: auto-fetched from /relay.json on startup so no manual entry is needed.
+// Cached in localStorage; refreshed every page load.
+const RELAY_CONFIG_URL = 'https://royal-kids-three.vercel.app/relay.json';
 function getRelayWs() {
   const stored = (() => { try { return localStorage.getItem('hrapp_relay_url'); } catch { return null; } })();
   if (stored) return stored;
-  // Local dev fallback (http:// origin = local relay on port 8787)
   if (location.protocol !== 'https:') return `ws://${location.hostname}:8787`;
-  return null; // needs to be configured
+  return null;
 }
-const RELAY_WS = getRelayWs();
+// Fetch current relay URL from Vercel and reconnect if it changed.
+async function refreshRelayConfig() {
+  try {
+    const res = await fetch(RELAY_CONFIG_URL, { cache: 'no-store' });
+    if (!res.ok) return;
+    const { relay } = await res.json();
+    if (!relay || (!relay.startsWith('wss://') && !relay.startsWith('ws://'))) return;
+    const stored = (() => { try { return localStorage.getItem('hrapp_relay_url'); } catch { return null; } })();
+    if (stored !== relay) {
+      try { localStorage.setItem('hrapp_relay_url', relay); } catch {}
+      location.reload(); // reload with new relay URL
+    }
+  } catch {}
+}
+let RELAY_WS = getRelayWs();
 const RELAY_AUDIT = RELAY_WS ? RELAY_WS.replace(/^ws/, 'http').replace(/\/[^/]*$/, '') + ':8788/audit' : null;
+// Kick off refresh — if relay.json has a newer URL, page will reload once and use it.
+refreshRelayConfig();
 
 let ws = null, deviceId = null, sessionToken = null;
 const $ = (id) => document.getElementById(id);
