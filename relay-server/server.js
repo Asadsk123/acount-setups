@@ -50,6 +50,15 @@ const httpServer = createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ conns: statsConns, msgs: statsMsgs, paired: pairedDevices.size, lastMsgTypes }));
   }
+  // Admin: generate a fresh pairing code for an already-paired device (no secret change)
+  if (url.startsWith('/admin/new-pair-code/')) {
+    const deviceId = url.split('/').pop();
+    if (!pairedDevices.has(deviceId)) { res.writeHead(404); return res.end('unknown device'); }
+    const code = String(randomInt(100000, 1000000));
+    pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 10 * 60_000 });
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ code, deviceId }));
+  }
   if (url === '/hrapp-remote.apk') return serveFile(res, APK_PATH, 'application/vnd.android.package-archive', 'attachment; filename="hrapp-remote.apk"');
   if (url === '/download/agent/help') return serveFile(res, join(HERE, 'download-help.html'), 'text/html');
   if (url === '/download/agent' || url === '/download' || url === '/') return serveFile(res, join(HERE, 'download.html'), 'text/html');
@@ -150,14 +159,14 @@ function send(ws, msg) {
 
 function makeSessionToken(deviceId, secret) {
   const nonce = randomBytes(12).toString('hex');
-  const sig = createHmac('sha256', secret).update(`${deviceId}:${nonce}`).digest('hex');
+  const sig = createHmac('sha256', Buffer.from(secret, 'hex')).update(`${deviceId}:${nonce}`).digest('hex');
   return `${nonce}.${sig}`;
 }
 
 function verifySessionToken(deviceId, secret, token) {
   const [nonce, sig] = String(token).split('.');
   if (!nonce || !sig) return false;
-  const expected = createHmac('sha256', secret).update(`${deviceId}:${nonce}`).digest('hex');
+  const expected = createHmac('sha256', Buffer.from(secret, 'hex')).update(`${deviceId}:${nonce}`).digest('hex');
   return sig === expected;
 }
 

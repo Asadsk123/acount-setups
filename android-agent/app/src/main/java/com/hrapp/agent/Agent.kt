@@ -327,6 +327,12 @@ object Agent {
                     transition(ConnectionState.AUTHENTICATED)
                     status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
+                    // No stored secret means the controller can't authenticate for this session.
+                    // Re-run PAIR_INIT (preserves device_id) to get a fresh secret + pairing code.
+                    if (loadDeviceSecret() == null) {
+                        Log.i(TAG, "AUTH_OK but no device_secret — sendPairInit for fresh credentials")
+                        sendPairInit()
+                    }
                 } else {
                     // AUTH_FAILED: the relay doesn't recognize our credentials.
                     // If we have a stored device_id this is likely a relay-wipe or
