@@ -53,6 +53,9 @@ object Agent {
     // listener was registered (race: Application.onCreate starts the WS before
     // MainActivity.onResume registers the callback).
     private var lastPairingCode: String? = null
+    // True when sendPairInit() was called just to refresh the display code (phone already
+    // authenticated). PAIR_INIT_RESPONSE should NOT call sendAuth() in that case.
+    @Volatile private var pairInitForDisplay = false
     private lateinit var appContext: Application
 
     @Volatile var state: ConnectionState = ConnectionState.DISCONNECTED
@@ -317,7 +320,14 @@ object Agent {
                     statusListener?.onPairingCode(code)
                 }
                 log("pairing code issued: $code")
-                sendAuth()
+                if (pairInitForDisplay) {
+                    // PAIR_INIT was for display refresh — already authenticated, skip sendAuth
+                    pairInitForDisplay = false
+                    transition(ConnectionState.AUTHENTICATED)
+                    Log.i(TAG, "PAIR_INIT_RESPONSE: display refresh — skipping sendAuth, staying AUTHENTICATED")
+                } else {
+                    sendAuth()
+                }
             }
             "AUTH_RESPONSE" -> {
                 if (msg.optString("status") == "OK") {
@@ -327,12 +337,11 @@ object Agent {
                     transition(ConnectionState.AUTHENTICATED)
                     status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
-                    // No stored secret means the controller can't authenticate for this session.
-                    // Re-run PAIR_INIT (preserves device_id) to get a fresh secret + pairing code.
-                    if (loadDeviceSecret() == null) {
-                        Log.i(TAG, "AUTH_OK but no device_secret — sendPairInit for fresh credentials")
-                        sendPairInit()
-                    }
+                    // Refresh display code — phone is already authenticated, so flag
+                    // PAIR_INIT_RESPONSE not to re-auth (would loop otherwise).
+                    pairInitForDisplay = true
+                    Log.i(TAG, "AUTH_OK — sendPairInit to refresh pairing code")
+                    sendPairInit()
                 } else {
                     // AUTH_FAILED: the relay doesn't recognize our credentials.
                     // If we have a stored device_id this is likely a relay-wipe or
