@@ -22,7 +22,7 @@ async function refreshRelayConfig() {
   } catch {}
 }
 let RELAY_WS = getRelayWs();
-const RELAY_AUDIT = RELAY_WS ? RELAY_WS.replace(/^ws/, 'http').replace(/\/[^/]*$/, '') + ':8788/audit' : null;
+const RELAY_AUDIT = RELAY_WS ? RELAY_WS.replace(/^wss?/, 'http') + '/audit' : null;
 // Kick off refresh — if relay.json has a newer URL, page will reload once and use it.
 refreshRelayConfig();
 

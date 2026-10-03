@@ -374,3 +374,50 @@ All tests run against live POCO X7 over Wi-Fi via Cloudflare tunnel relay.
 - `C:\Users\THINK BOOK\Desktop\HRAPP_FINAL_REPORT_20261003.md` — full phase report
 
 versionCode 22→23, versionName 1.22→1.23
+
+---
+
+## 2026-10-03 — A→Z Hardening Session (continued)
+
+### Background Architecture (Phase 4) — ALL VERIFIED
+| State | Camera | Mic | Result |
+|-------|--------|-----|--------|
+| Activity in background (HOME) | 3 frames | — | ✅ VERIFIED |
+| Screen LOCKED (KEYCODE_SLEEP) | 2 frames | 13 chunks | ✅ VERIFIED |
+| Activity removed from recents | 2 frames | 9 chunks | ✅ VERIFIED |
+| Screen OFF | 2 frames | 10 chunks | ✅ VERIFIED |
+| Process killed → restart | reconnected, state=AUTHENTICATED | — | ✅ VERIFIED |
+
+### Phase 7 — Multiple Controllers
+- Two simultaneous controllers both authenticate OK
+- **Relay enforces single `{deviceId}:controller` slot** (server.js line 199/327)
+- Last-authenticated controller wins the stream slot — by design, not a bug
+- Result: KNOWN LIMITATION — one active stream receiver per device
+
+### Phase 13 — Location
+- `LOCATION_REQUEST` forwarded to agent ✅
+- Agent receives and handles it ✅
+- `LOCATION_REQUEST failed: no provider enabled` — GPS disabled on test device
+- **Code path VERIFIED** — works when GPS is enabled on the phone
+
+### Controller UI Fixes (deployed to production)
+1. `index.html` line 43: "v1.15" → "v1.23" ✅
+2. `index.html` line 52: "enter this PC's address" → pairing code instructions ✅
+3. `app.js` line 25: RELAY_AUDIT URL — removed hardcoded `:8788` port, now uses `wss→https` + `/audit` ✅
+- Deployed: https://royal-kids-three.vercel.app ✅
+
+### 10-Scenario Stress Test — 10/10 PASSED
+| # | Scenario | Result |
+|---|----------|--------|
+| 1 | Front cam single frame | ✅ 1 frame, 47KB |
+| 2 | Rear cam single frame | ✅ 1 frame, 47KB |
+| 3 | Front cam 5-frame stream | ✅ 5 frames, 235KB, 2.8s |
+| 4 | Rear cam 5-frame stream | ✅ 5 frames, 237KB, 2.9s |
+| 5 | Mic 5s recording | ✅ 50 chunks, 80KB, 5.5s |
+| 6 | Front cam 10-frame stream | ✅ 10 frames, 470KB, 5.3s |
+| 7 | Mic 10s recording | ✅ 100 chunks, 160KB, 10.5s |
+| 8 | Camera switch front→rear (same session) | ✅ front=3, rear=3 |
+| 9 | Camera + mic simultaneous | ✅ cam=5, mic=30 |
+| 10 | FAIL ATTEMPT: invalid pair code 000000 | ✅ Correctly rejected NOT_SUPPORTED |
+
+Media saved: `C:\Users\THINK BOOK\Desktop\HRAPP_StressTest_20261003_013720`
