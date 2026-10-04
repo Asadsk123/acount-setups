@@ -53,8 +53,10 @@ object Agent {
     // listener was registered (race: Application.onCreate starts the WS before
     // MainActivity.onResume registers the callback).
     private var lastPairingCode: String? = null
-    // True when sendPairInit() was called just to refresh the display code (phone already
-    // authenticated). PAIR_INIT_RESPONSE should NOT call sendAuth() in that case.
+    // Whether the last sendPairInit() was for display refresh (already authenticated).
+    // PAIR_INIT_RESPONSE skips sendAuth() in that case to avoid a loop.
+    // NOTE: pairInitForDisplay PAIR_INIT was removed from AUTH_RESPONSE OK to prevent
+    // the rapid code1→code2 switch bug. This field kept for reconnect path only.
     @Volatile private var pairInitForDisplay = false
     private lateinit var appContext: Application
 
@@ -352,11 +354,12 @@ object Agent {
                     transition(ConnectionState.AUTHENTICATED)
                     status("enter code on controller: $lastPairingCode")
                     sendCapabilities()
-                    // Refresh display code — phone is already authenticated, so flag
-                    // PAIR_INIT_RESPONSE not to re-auth (would loop otherwise).
-                    pairInitForDisplay = true
-                    Log.i(TAG, "AUTH_OK — sendPairInit to refresh pairing code")
-                    sendPairInit()
+                    // Do NOT send a second PAIR_INIT here. The code from the first
+                    // PAIR_INIT_RESPONSE is already stored in lastPairingCode and
+                    // shown on screen. A second PAIR_INIT causes the relay to generate
+                    // a new code + new secret within ~500ms, making the displayed code
+                    // change before the user can read it. The existing code remains
+                    // valid in pendingPairings for 10 minutes.
                 } else {
                     // AUTH_FAILED: the relay doesn't recognize our credentials.
                     // If we have a stored device_id this is likely a relay-wipe or
@@ -433,6 +436,10 @@ object Agent {
             }
             else -> log("unhandled message_type: $type")
         }
+    }
+
+    fun sendCapabilitiesIfConnected() {
+        if (state == ConnectionState.AUTHENTICATED || state == ConnectionState.PAIRED) sendCapabilities()
     }
 
     private fun sendCapabilities() {

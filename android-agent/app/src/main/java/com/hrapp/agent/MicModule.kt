@@ -35,7 +35,12 @@ object MicModule {
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minBuf, chunkSamples * 2)
             )
-        } catch (e: SecurityException) { Agent.log("mic init failed: ${e.message}"); return }
+        } catch (e: SecurityException) { Agent.log("mic SecurityException: ${e.message}"); return }
+          catch (e: Exception) { Agent.log("mic init failed: ${e.message}"); return }
+
+        if (record.state != AudioRecord.STATE_INITIALIZED) {
+            Agent.log("mic AudioRecord STATE_UNINITIALIZED — hardware busy or permission missing"); return
+        }
 
         recording = true
         Agent.sendStreamStatus("mic", "started")
@@ -44,6 +49,10 @@ object MicModule {
             record.startRecording()
             while (recording) {
                 val n = record.read(buf, 0, buf.size)
+                if (n < 0) {
+                    Agent.log("mic read error: $n — stopping")
+                    recording = false; break
+                }
                 if (n > 0) {
                     val bytes = ByteArray(n * 2)
                     for (i in 0 until n) {

@@ -223,18 +223,21 @@ wss.on('connection', (ws, req) => {
       case 'PAIR_INIT': {
         const code = String(randomInt(100000, 1000000)); // crypto-random 6-digit PIN (not guessable)
         const deviceId = msg.device_id || randomUUID();
-        const secret = randomBytes(32).toString('hex');
-        // Secret is live immediately — the agent authenticates as soon as it
-        // holds device_id+secret, it does not need to wait for a controller
-        // to claim the pairing code first.
-        pairedDevices.set(deviceId, secret);
-        savePaired();
+        // Re-use existing secret if device already paired (reconnect path) — only generate
+        // new secret for truly fresh devices. This prevents secret rotation on every reconnect
+        // which would invalidate any controller session token held from before the restart.
+        const existingSecret = pairedDevices.get(deviceId);
+        const secret = existingSecret || randomBytes(32).toString('hex');
+        if (!existingSecret) {
+          pairedDevices.set(deviceId, secret);
+          savePaired();
+        }
         pendingPairings.set(code, { deviceId, expiresAt: Date.now() + 10 * 60_000 }); // 10 min per PAIR-002
-        // device_secret is sent ONCE to the agent so it can authenticate on reconnect.
-        // The agent stores it in SharedPreferences; the relay keeps it in pairedDevices.
-        // This is the shared-secret that replaces bare device_id auth.
+        // device_secret sent on fresh pair only (existingSecret === undefined).
+        // On reconnect the phone already has the secret; sending it again is harmless but
+        // we send it anyway so the phone can detect if the relay wiped its state.
         send(ws, { message_type: 'PAIR_INIT_RESPONSE', request_id: msg.request_id, status: 'OK', payload: { device_id: deviceId, pairing_code: code, device_secret: secret } });
-        logAudit({ type: 'PAIR_INIT', deviceId });
+        logAudit({ type: 'PAIR_INIT', deviceId, detail: existingSecret ? 'reconnect' : 'fresh' });
         break;
       }
 

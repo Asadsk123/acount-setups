@@ -150,6 +150,14 @@ class MainActivity : Activity(), Agent.StatusListener {
         diagHandler.removeCallbacks(diagRunnable)
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // Re-send capabilities after permission grant so controller sees updated mic/camera/location state.
+        // sendCapabilitiesIfConnected() is a no-op if not yet authenticated.
+        Log.d("HRAPP", "onRequestPermissionsResult: code=$requestCode grants=${grantResults.toList()}")
+        Agent.sendCapabilitiesIfConnected()
+    }
+
     private fun refreshDiag() {
         // NetworkInterface.getNetworkInterfaces() must NOT run on the main thread.
         Thread {

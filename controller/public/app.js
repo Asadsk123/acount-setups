@@ -281,7 +281,12 @@ $('screenStop').onclick = () => send({ message_type: 'STOP_SCREEN' });
 $('cameraBack').onclick = () => { $('cameraStatus').textContent = 'starting back…'; send({ message_type: 'START_CAMERA', payload: { facing: 'back' } }); };
 $('cameraFront').onclick = () => { $('cameraStatus').textContent = 'starting front…'; send({ message_type: 'START_CAMERA', payload: { facing: 'front' } }); };
 $('cameraStop').onclick = () => send({ message_type: 'STOP_CAMERA' });
-$('micStart').onclick = () => send({ message_type: 'START_MIC' });
+$('micStart').onclick = () => {
+  // Pre-warm AudioContext during user gesture so browser doesn't suspend it
+  // when the first mic chunk arrives (outside the gesture callback).
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch {}
+  send({ message_type: 'START_MIC' });
+};
 $('micStop').onclick = () => send({ message_type: 'STOP_MIC' });
 
 // --- notifications ---
