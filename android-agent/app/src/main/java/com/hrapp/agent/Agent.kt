@@ -89,8 +89,17 @@ object Agent {
         Log.d(TAG, "init: called, already=${::appContext.isInitialized}")
         if (::appContext.isInitialized) return
         appContext = app
-        fetchRemoteRelayConfig() // async — updates configured_relay if changed, then reconnects
-        connect()
+        val hasStoredRelay = app.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+            .getString("configured_relay", null) != null
+        if (hasStoredRelay) {
+            // Returning install: connect immediately on stored URL, refresh config in background.
+            connect()
+            fetchRemoteRelayConfig()
+        } else {
+            // Fresh install: no relay URL yet. Fetch relay.json first — it calls connect()
+            // once the URL is stored. PRODUCTION_RELAY fallback only if fetch fails.
+            fetchRemoteRelayConfig()
+        }
     }
 
     /** Fetches relay URL from the controller's /relay.json. Reconnects if it changed.
@@ -110,6 +119,11 @@ object Agent {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Remote relay config fetch failed: ${e.message}")
+                // Fresh install with no stored relay: fall back to PRODUCTION_RELAY
+                val prefs = appContext.getSharedPreferences(PREF, Application.MODE_PRIVATE)
+                if (prefs.getString("configured_relay", null) == null) {
+                    mainHandler.post { connect() }
+                }
             }
         }.start()
     }

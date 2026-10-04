@@ -139,11 +139,19 @@ setInterval(() => {
 }, 5 * 60_000);
 
 // Load persisted pairings (must come after pairedDevices is defined above).
+// Priority: env var seed first (survives redeploy on ephemeral fs), then file (survives restart).
+if (process.env.INITIAL_PAIRED_DEVICES) {
+  try {
+    const seeded = JSON.parse(process.env.INITIAL_PAIRED_DEVICES);
+    for (const [id, secret] of Object.entries(seeded)) pairedDevices.set(id, secret);
+    console.log(`[PAIR] Seeded ${pairedDevices.size} pairing(s) from INITIAL_PAIRED_DEVICES env`);
+  } catch (e) { console.warn('[PAIR] INITIAL_PAIRED_DEVICES parse error:', e.message); }
+}
 if (existsSync(PAIRED_FILE)) {
   try {
     const saved = JSON.parse(readFileSync(PAIRED_FILE, 'utf8'));
     for (const [id, secret] of Object.entries(saved)) pairedDevices.set(id, secret);
-    console.log(`[PAIR] Loaded ${pairedDevices.size} persisted pairing(s)`);
+    console.log(`[PAIR] Loaded ${pairedDevices.size} pairing(s) from file (total)`);
   } catch (e) { console.warn('[PAIR] Could not load paired-devices.json:', e.message); }
 }
 
