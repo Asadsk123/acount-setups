@@ -421,3 +421,35 @@ versionCode 22→23, versionName 1.22→1.23
 | 10 | FAIL ATTEMPT: invalid pair code 000000 | ✅ Correctly rejected NOT_SUPPORTED |
 
 Media saved: `C:\Users\THINK BOOK\Desktop\HRAPP_StressTest_20261003_013720`
+
+---
+
+## 2026-10-04 — Final Evidence Gap Closure Session
+
+### Source Audit (Section E) — CLEAN
+- No hardcoded `192.168.*` IPs in source
+- No `9f14931a` device ID in any .kt file
+- No POCO/device-model conditionals
+- No USB-only code paths
+- `device_secret` stored only in SharedPreferences at runtime; NOT baked into APK
+- APK v1.24 SHA256: `e51dc30bfcdaa113f7ce30d090396cf78227329ea33ff4445355c68e52ee7f4f`
+- Git commit: `043f351`
+
+### BUG-04: Relay URL stuck on reconnect (FIXED, not yet installed)
+- Root cause: `fetchRemoteRelayConfig()` only called from `init()`, not during reconnect loops
+- Effect: if CF tunnel changes while app running, phone stays stuck on dead URL forever
+- Fix: `scheduleReconnect()` in Agent.kt now calls `fetchRemoteRelayConfig()` on each backoff cycle
+- File: `android-agent/app/src/main/java/com/hrapp/agent/Agent.kt:82`
+- APK v1.24 built and deployed to Vercel. Awaiting USB reconnect to install on device.
+
+### Multi-controller relay routing (FIXED, running in relay)
+- Root cause: `connections.set(`${deviceId}:controller`)` single-slot; only binary frames used broadcast
+- Fix: `AUTH_REQUEST` now calls `addController()`; TO_CONTROLLER text messages use `broadcastToControllers()`; close handler calls `removeController()`
+- Files: `relay-server/server.js` lines 302, 348, 363
+- Infrastructure was already present (lines 114-134) but not wired for text messages
+- Multi-controller relay is now running. Pending device reconnect to run final Phase 7 verification.
+
+### Blocking: USB disconnected, phone stuck on dead CF tunnel (old v1.23 code)
+- Phone must be manually restarted OR USB reconnected to pick up new relay.json URL
+- New tunnel: `wss://raised-stored-totals-sorted.trycloudflare.com`
+- Remaining: install v1.24, enable GPS, USB-free test, final 18-item regression
