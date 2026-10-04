@@ -280,6 +280,7 @@ wss.on('connection', (ws, req) => {
         boundDeviceId = device_id;
         boundRole = role;
         connections.set(`${device_id}:${role}`, { ws, role, deviceId: device_id });
+        if (role === 'controller') addController(device_id, { ws });
         send(ws, { message_type: 'AUTH_RESPONSE', status: 'OK', payload: { device_id } });
         logAudit({ type: 'AUTH_OK', deviceId: device_id, detail: role });
         break;
@@ -324,8 +325,7 @@ wss.on('connection', (ws, req) => {
             logAudit({ type: 'UNAUTHORIZED_EVENT', deviceId: msg.device_id, detail: msg.message_type });
             return send(ws, { message_type: 'ERROR', status: 'ERROR', error_code: 'AUTH_ERROR' });
           }
-          const controller = connections.get(`${msg.device_id}:controller`);
-          if (controller) send(controller.ws, { message_type: msg.message_type, device_id: msg.device_id, payload: msg.payload });
+          broadcastToControllers(msg.device_id, cws => send(cws, { message_type: msg.message_type, device_id: msg.device_id, payload: msg.payload }));
           if (!HIGH_RATE.has(msg.message_type)) {
             const detail = msg.payload?.result ?? JSON.stringify(msg.payload ?? {}).slice(0, 80);
             logAudit({ type: msg.message_type, deviceId: msg.device_id, detail });
@@ -340,6 +340,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (boundDeviceId) logAudit({ type: 'DISCONNECT', deviceId: boundDeviceId });
     for (const [key, conn] of connections) if (conn.ws === ws) connections.delete(key);
+    if (boundRole === 'controller' && boundDeviceId) removeController(boundDeviceId, ws);
   });
 });
 

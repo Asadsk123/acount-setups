@@ -79,6 +79,7 @@ object Agent {
         val delay = retryDelayMs + (Math.random() * 1000).toLong() // jitter ±1s
         retryDelayMs = minOf(retryDelayMs * 2, 60_000L)
         Log.d(TAG, "reconnect scheduled: gen=$gen delay=${delay}ms (next=${retryDelayMs}ms)")
+        fetchRemoteRelayConfig() // re-check relay URL on each backoff cycle
         mainHandler.postDelayed({ if (gen == connectGen) connect() }, delay)
     }
 
