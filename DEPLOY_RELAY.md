@@ -1,70 +1,82 @@
-# HRAPP Relay — Public Deployment Guide
+# HRAPP Relay — Stable Deployment (REQUIRED for production)
 
-## IMPORTANT: Why Vercel won't work for the relay
+## Architecture overview
 
-Vercel is serverless — functions time out after 10-30s and cannot hold a persistent WebSocket connection. The HRAPP relay requires long-lived WebSocket sessions (minutes to hours). Use one of the options below instead.
-
----
-
-## Option A — Cloudflare Tunnel (FREE, fastest, no account needed)
-
-Keeps your PC's relay accessible from anywhere. Phone connects to a stable `*.trycloudflare.com` domain.
-
-### Steps:
-1. Start relay: `cd C:\PROJECTS\HRAPP\relay-server && node server.js`
-2. Download cloudflared: https://github.com/cloudflare/cloudflared/releases/latest → `cloudflared-windows-amd64.exe`
-3. Run tunnel: `cloudflared-windows-amd64.exe tunnel --url http://localhost:8787`
-4. Copy the printed URL e.g. `https://abc-123.trycloudflare.com`
-5. On the phone, enter: `wss://abc-123.trycloudflare.com` as the relay address
-
-**Limitation**: URL changes each time cloudflared restarts. For stable URL, use Option B.
-
----
-
-## Option B — Railway (FREE tier, stable URL, proper WebSocket support)
-
-### Steps:
-1. Go to https://railway.app → sign up with GitHub
-2. New Project → Deploy from GitHub repo → select `Asadsk123/acount-setups`
-3. Set Root Directory: `relay-server`
-4. Railway auto-detects Node.js from `package.json`
-5. Add env variable: `PORT=8787` (or Railway assigns one automatically)
-6. Deploy → get URL like `https://hrapp-relay-production.up.railway.app`
-7. On phone, enter: `wss://hrapp-relay-production.up.railway.app` as relay address
-
-**Advantage**: Stable URL, free 500 hours/month, proper WebSocket support.
-
----
-
-## Option C — Render (FREE tier)
-
-1. https://render.com → New Web Service → connect GitHub repo
-2. Root directory: `relay-server`
-3. Build command: `npm install`
-4. Start command: `node server.js`
-5. Set `PORT` env var to whatever Render assigns
-6. Deploy → get stable `https://hrapp-relay.onrender.com` URL
-
----
-
-## After deployment — update phone
-
-Once you have the public URL, enter it in the app's relay host field:
-- Format: `wss://your-relay-domain.com` (for HTTPS/WSS)
-- Or: `ws://your-relay-domain.com:PORT` (for plain WebSocket)
-
-The app's `parseTarget()` function handles both formats automatically.
-
----
-
-## Vercel — what it's good for
-
-Vercel works for the **controller** (static HTML/JS files) but NOT for the relay.
-
-To deploy the controller to Vercel:
-```bash
-cd C:\PROJECTS\HRAPP\controller
-npx vercel --token YOUR_TOKEN
+```
+Phone APK  →  relay.json (Vercel, stable)  →  Relay server URL
+                                             ↑
+                                    THIS must be stable
 ```
 
-Set the environment variable `RELAY_URL` to your Railway/Render relay URL.
+- `relay.json` at `https://royal-kids-three.vercel.app/relay.json` — **already stable** (Vercel)
+- Relay server — **must be on Railway or Render** (NOT Cloudflare Quick Tunnel)
+- CF Quick Tunnel = dev-only, dies when PC restarts, breaks all connected phones
+
+---
+
+## Phase B — Deploy relay to Railway (5 minutes, free)
+
+### One-time setup:
+
+1. Go to **https://railway.com** → sign up / log in with GitHub
+2. Click **New Project → Deploy from GitHub repo**
+3. Select repo: `Asadsk123/acount-setups`
+4. Set **Root Directory**: `relay-server`
+5. Railway auto-detects Node.js. Deploy runs automatically.
+6. Copy the domain Railway assigns — looks like:
+   `hrapp-relay-production.up.railway.app`
+
+### After you have the Railway URL:
+
+Tell me the URL (starts with `https://`) and I will:
+- Update `controller/public/relay.json` to point to `wss://your-url`
+- Deploy relay.json update to Vercel
+- All phones auto-update their relay URL within one reconnect cycle
+
+### Set `INITIAL_PAIRED_DEVICES` (Phase H — pairing persistence):
+
+After first phones pair through Railway, export current pairings to survive redeploys:
+
+```bash
+# From relay-server dir, run once after phones pair:
+node -e "const fs=require('fs'); console.log(fs.readFileSync('paired-devices.json','utf8'))"
+```
+
+Paste the JSON output as a Railway environment variable named `INITIAL_PAIRED_DEVICES`.
+New deploys will seed from this value + current file (whichever has more entries wins).
+
+---
+
+## Option B — Render (alternative, also free)
+
+1. https://render.com → New Web Service → connect GitHub
+2. Root directory: `relay-server`
+3. Build: `npm install`, Start: `node server.js`
+4. Render assigns a stable `https://hrapp-relay.onrender.com` URL
+
+Same process: tell me the URL → I update relay.json → all phones auto-switch.
+
+**Note**: Render free tier spins down after 15min inactivity. Railway does not.
+Railway is preferred.
+
+---
+
+## DO NOT use for relay (relay needs persistent WebSocket):
+
+- **Vercel** — serverless, kills connections after 10s
+- **Cloudflare Quick Tunnel** — dies on PC restart, URL changes every time
+- **Netlify** — same as Vercel
+
+---
+
+## Controller (Vercel) — already deployed ✅
+
+`https://royal-kids-three.vercel.app` — serves:
+- `/relay.json` — bootstrap config for phones (stable URL)
+- `/hrapp-remote.apk` — latest APK download (v1.25)
+- Dashboard UI
+
+To redeploy after changes:
+```
+cd C:\PROJECTS\HRAPP\controller && npx vercel@latest --prod --yes
+```
